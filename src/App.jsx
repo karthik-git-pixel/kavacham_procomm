@@ -8,7 +8,7 @@ import EventTimeline from './components/EventTimeline';
 import SystemSummary from './components/SystemSummary';
 import EnvironmentalOverview from './components/EnvironmentalOverview';
 import './App.css';
-import helmetLogo from './assets/wowhelmet.png';
+
 
 function App() {
   const [mqttStatus, setMqttStatus] = useState('connecting');
@@ -35,13 +35,6 @@ function App() {
   // I will pass nodes to it just in case, or it might just call useNodes().
 
   return (
-    <>
-      {mqttStatus === 'connecting' && (
-        <div className="loading-screen">
-          <img src={helmetLogo} alt="KAVACHAM Logo" className="loading-logo" />
-          <div className="loading-title">KAVACHAM</div>
-        </div>
-      )}
       <div className="dashboard-container">
         
         <TopNav status={mqttStatus} />
@@ -77,7 +70,6 @@ function App() {
 
       </div>
     </div>
-    </>
   );
 }
 
