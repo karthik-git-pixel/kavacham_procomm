@@ -2,118 +2,111 @@
 
 #define NODE_NAME "KAVACHAM_N2"
 
+NimBLEAdvertising *advertising;
+
 
 // =====================================================
-// BLE SCAN CALLBACK
+// RELAY RECEIVED PACKET
+// =====================================================
+void relayPacket(const std::string &receivedData) {
+
+  advertising->stop();
+  advertising->clearData();
+
+  NimBLEAdvertisementData data;
+
+  data.setFlags(0x06);
+
+  data.setName("KAVACHAM");
+
+  // SAME PACKET RECEIVED FROM NODE 1
+  data.setManufacturerData(receivedData);
+
+  advertising->setAdvertisementData(data);
+  advertising->start();
+
+
+  // =================================================
+  // DECODE PACKET
+  // =================================================
+
+  const uint8_t *packet =
+    (const uint8_t *)receivedData.data();
+
+  uint8_t nodeID = packet[0];
+
+  uint16_t gasValue =
+    ((uint16_t)packet[1] << 8) |
+    packet[2];
+
+  uint8_t temperature = packet[3];
+  uint8_t humidity = packet[4];
+
+
+  Serial.println();
+  Serial.println("================================");
+  Serial.println("       PACKET RECEIVED");
+  Serial.println("================================");
+
+  Serial.print("ORIGINAL SOURCE: NODE ");
+  Serial.println(nodeID);
+
+  Serial.print("Gas: ");
+  Serial.println(gasValue);
+
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.println(" C");
+
+  Serial.print("Humidity: ");
+  Serial.print(humidity);
+  Serial.println(" %");
+
+  Serial.println("--------------------------------");
+  Serial.println("RELAYING TO NODE 3...");
+  Serial.println("--------------------------------");
+}
+
+
+// =====================================================
+// SCANNER
 // =====================================================
 class ScanCallbacks : public NimBLEScanCallbacks {
 
-  void onResult(const NimBLEAdvertisedDevice *device) override {
+  void onResult(
+    const NimBLEAdvertisedDevice *device
+  ) override {
 
-    // -----------------------------------------------
-    // Must have KAVACHAM name
-    // -----------------------------------------------
-
+    // Check name
     if (!device->haveName()) {
       return;
     }
 
-    String name = device->getName().c_str();
+    String name =
+      device->getName().c_str();
 
     if (name != "KAVACHAM") {
       return;
     }
 
-
-    // -----------------------------------------------
-    // Must contain manufacturer data
-    // -----------------------------------------------
-
+    // Check manufacturer data
     if (!device->haveManufacturerData()) {
       return;
     }
 
+    std::string receivedData =
+      device->getManufacturerData();
 
-    std::string data = device->getManufacturerData();
-
-
-    // -----------------------------------------------
-    // We expect exactly 5 bytes
-    // -----------------------------------------------
-
-    if (data.length() != 5) {
+    // Packet must be 5 bytes
+    if (receivedData.length() != 5) {
       return;
     }
 
-
-    // -----------------------------------------------
-    // READ PACKET
-    // -----------------------------------------------
-
-    const uint8_t *packet =
-      (const uint8_t *)data.data();
-
-
-    // -----------------------------------------------
-    // NODE ID
-    // -----------------------------------------------
-
-    uint8_t nodeID = packet[0];
-
-
-    // -----------------------------------------------
-    // GAS
-    // -----------------------------------------------
-
-    uint16_t gasValue =
-      ((uint16_t)packet[1] << 8) |
-      packet[2];
-
-
-    // -----------------------------------------------
-    // TEMPERATURE
-    // -----------------------------------------------
-
-    uint8_t temperature = packet[3];
-
-
-    // -----------------------------------------------
-    // HUMIDITY
-    // -----------------------------------------------
-
-    uint8_t humidity = packet[4];
-
-
-    // =================================================
-    // DISPLAY RECEIVED DATA
-    // =================================================
-
-    Serial.println();
-    Serial.println("================================");
-    Serial.println("       BLE PACKET RECEIVED");
-    Serial.println("================================");
-
-    Serial.print("SOURCE NODE: NODE ");
-    Serial.println(nodeID);
-
-    Serial.print("Gas: ");
-    Serial.println(gasValue);
-
-    Serial.print("Temperature: ");
-    Serial.print(temperature);
-    Serial.println(" C");
-
-    Serial.print("Humidity: ");
-    Serial.print(humidity);
-    Serial.println(" %");
-
-    Serial.println("DATA CAME FROM NODE 1");
-    Serial.println("================================");
+    // Relay it
+    relayPacket(receivedData);
   }
 };
 
-
-// Create scanner callback
 ScanCallbacks scanCallbacks;
 
 
@@ -128,29 +121,31 @@ void setup() {
 
   NimBLEDevice::init(NODE_NAME);
 
+  advertising =
+    NimBLEDevice::getAdvertising();
+
+
+  // Start scanner
   NimBLEScan *scan =
     NimBLEDevice::getScan();
 
   scan->setScanCallbacks(&scanCallbacks);
 
-  // Active scanning
   scan->setActiveScan(true);
 
-  // Fast scan
   scan->setInterval(20);
   scan->setWindow(20);
 
-  // Continuous scanning
   scan->start(0, false);
 
 
   Serial.println();
   Serial.println("================================");
   Serial.println("       KAVACHAM NODE 2");
-  Serial.println("       BLE RECEIVER");
   Serial.println("================================");
-
-  Serial.println("Waiting for NODE 1...");
+  Serial.println("BLE RECEIVER + RELAY");
+  Serial.println();
+  Serial.println("Waiting for Node 1...");
 }
 
 
@@ -159,6 +154,6 @@ void setup() {
 // =====================================================
 void loop() {
 
-  // BLE scanner runs continuously
+  // BLE scanner handles everything
 
 }
