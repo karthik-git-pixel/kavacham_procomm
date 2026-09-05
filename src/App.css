@@ -65,16 +65,26 @@
 
   .app-body {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "main" "workers" "rail";
-    grid-template-rows: none;
+    grid-template-areas:
+      "workers"
+      "main"
+      "rail";
+    grid-template-rows: auto;
+    height: auto;
   }
 
-  .col { min-height: 0; }
+  .col-workers { grid-area: workers; }
+  .col-main    { grid-area: main; }
+  .col-rail    { grid-area: rail; }
+
+  .col { min-height: unset; height: auto; }
   .col-main .zmap { flex: none; min-height: 320px; }
   .col-main .etl { flex: none; max-height: none; }
   .etl-scroll { max-height: 340px; }
 
-  .wlist-scroll { overflow: visible; }
+  /* Let the worker list expand to full content height on mobile */
+  .wlist { flex: none; height: auto; }
+  .wlist-scroll { overflow: visible; height: auto; flex: none; }
 
   .col-rail { flex-direction: column; }
 }
@@ -82,6 +92,6 @@
 @media (max-width: 620px) {
   .app-body { padding: var(--s-3); gap: var(--s-3); }
   .wcard-strip { grid-template-columns: repeat(2, 1fr); }
-  .wcard-gauges { grid-template-columns: 1fr; }
+  .wcard-gauges { grid-template-columns: repeat(2, 1fr); }
   .sum-grid { grid-template-columns: 1fr; }
 }
