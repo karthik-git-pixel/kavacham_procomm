@@ -25,15 +25,6 @@ function App() {
     };
   }, []);
 
-  // Compute highest severity across all nodes
-  const nodesArray = Object.values(nodes);
-  const maxAlert = Math.max(0, ...nodesArray.map(n => n.alert || 0));
-  
-  // Extract all events/history for timeline if needed, or maybe EventTimeline gets data differently.
-  // Assuming EventTimeline and ZoneMap can just take nodes or don't need props if they use nodeStore internally.
-  // Actually, ZoneMap takes nodes as prop or uses nodeStore itself? Let's check ZoneMap.jsx
-  // I will pass nodes to it just in case, or it might just call useNodes().
-
   return (
       <div className="dashboard-container">
         
