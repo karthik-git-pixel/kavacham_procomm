@@ -1,4 +1,3 @@
-```cpp
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
@@ -15,14 +14,138 @@
 // =====================================================
 
 NimBLEAdvertising* advertising = nullptr;
+NimBLEScan* scan = nullptr;
 
 // =====================================================
-// DUPLICATE PACKET CONTROL
+// RELAY STATE
+// =====================================================
+
+bool relayActive = false;
+unsigned long relayStopTime = 0;
+
+uint8_t relayPacketData[7];
+
+// =====================================================
+// DUPLICATE CONTROL
 // =====================================================
 
 uint8_t lastSourceNode = 0;
 uint8_t lastSequence = 255;
 bool hasReceivedPacket = false;
+
+// =====================================================
+// START SCANNING
+// =====================================================
+
+void startScanning() {
+
+  if (!scan) {
+    return;
+  }
+
+  if (scan->isScanning()) {
+    return;
+  }
+
+  scan->start(
+    0,
+    false
+  );
+}
+
+// =====================================================
+// STOP SCANNING
+// =====================================================
+
+void stopScanning() {
+
+  if (!scan) {
+    return;
+  }
+
+  if (scan->isScanning()) {
+    scan->stop();
+  }
+}
+
+// =====================================================
+// START RELAY
+// =====================================================
+
+void startRelay(
+  const uint8_t* packet
+) {
+
+  memcpy(
+    relayPacketData,
+    packet,
+    7
+  );
+
+  std::string data(
+    (char*)relayPacketData,
+    7
+  );
+
+  // Stop scanning temporarily
+  stopScanning();
+
+  advertising->stop();
+  advertising->clearData();
+
+  NimBLEAdvertisementData advertisement;
+
+  advertisement.setFlags(0x06);
+
+  advertisement.setName(
+    "KAVACHAM"
+  );
+
+  advertisement.setManufacturerData(
+    data
+  );
+
+  advertising->setAdvertisementData(
+    advertisement
+  );
+
+  advertising->start();
+
+  relayActive = true;
+
+  // Relay for 300 ms.
+  // This is enough to be detected,
+  // without blocking the BLE scan.
+
+  relayStopTime =
+      millis() + 300;
+}
+
+// =====================================================
+// STOP RELAY
+// =====================================================
+
+void stopRelay() {
+
+  if (!relayActive) {
+    return;
+  }
+
+  advertising->stop();
+
+  relayActive = false;
+
+  Serial.println(
+    "Relay finished."
+  );
+
+  // Immediately return to scanning
+  startScanning();
+
+  Serial.println(
+    "Node 2 scanning again..."
+  );
+}
 
 // =====================================================
 // RELAY PACKET
@@ -38,27 +161,36 @@ void relayPacket(
   }
 
   // ---------------------------------------------
-  // Verify KAVACHAM packet
+  // Verify protocol
   // ---------------------------------------------
 
-  if (packet[0] != 0xCA) {
+  if (
+    packet[0] != 0xCA
+  ) {
     return;
   }
 
-  uint8_t sourceNode = packet[1];
-  uint8_t status     = packet[2];
-  uint8_t sequence   = packet[3];
+  uint8_t sourceNode =
+      packet[1];
+
+  uint8_t status =
+      packet[2];
+
+  uint8_t sequence =
+      packet[3];
 
   // ---------------------------------------------
-  // Ignore our own packets
+  // Ignore own packets
   // ---------------------------------------------
 
-  if (sourceNode == NODE_ID) {
+  if (
+    sourceNode == NODE_ID
+  ) {
     return;
   }
 
   // ---------------------------------------------
-  // Ignore duplicate packets
+  // Ignore exact duplicate
   // ---------------------------------------------
 
   if (
@@ -66,12 +198,18 @@ void relayPacket(
     sourceNode == lastSourceNode &&
     sequence == lastSequence
   ) {
+
     return;
   }
 
-  lastSourceNode = sourceNode;
-  lastSequence = sequence;
-  hasReceivedPacket = true;
+  lastSourceNode =
+      sourceNode;
+
+  lastSequence =
+      sequence;
+
+  hasReceivedPacket =
+      true;
 
   // ---------------------------------------------
   // Decode status
@@ -90,10 +228,11 @@ void relayPacket(
       status & 0x08;
 
   // ---------------------------------------------
-  // Display received information
+  // Display
   // ---------------------------------------------
 
   Serial.println();
+
   Serial.println(
     "================================"
   );
@@ -109,47 +248,71 @@ void relayPacket(
   Serial.print(
     "Source Node : "
   );
-  Serial.println(sourceNode);
+
+  Serial.println(
+    sourceNode
+  );
 
   Serial.print(
     "Sequence    : "
   );
-  Serial.println(sequence);
+
+  Serial.println(
+    sequence
+  );
 
   Serial.print(
     "Gas         : "
   );
-  Serial.println(packet[4]);
+
+  Serial.println(
+    packet[4]
+  );
 
   Serial.print(
     "Temperature : "
   );
-  Serial.print(packet[5]);
-  Serial.println(" C");
+
+  Serial.print(
+    packet[5]
+  );
+
+  Serial.println(
+    " C"
+  );
 
   Serial.print(
     "Gas Status  : "
   );
+
   Serial.println(
-    gasUnsafe ? "UNSAFE" : "SAFE"
+    gasUnsafe ?
+    "UNSAFE" :
+    "SAFE"
   );
 
   Serial.print(
     "Temp Status : "
   );
+
   Serial.println(
-    tempUnsafe ? "UNSAFE" : "SAFE"
+    tempUnsafe ?
+    "UNSAFE" :
+    "SAFE"
   );
 
   Serial.print(
     "Fall Status : "
   );
+
   Serial.println(
-    fallUnsafe ? "DETECTED" : "SAFE"
+    fallUnsafe ?
+    "DETECTED" :
+    "SAFE"
   );
 
   // =================================================
-  // EMERGENCY PACKET
+  // AUTOMATIC EMERGENCY
   // =================================================
 
   if (
@@ -159,6 +322,7 @@ void relayPacket(
   ) {
 
     Serial.println();
+
     Serial.println(
       "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     );
@@ -175,43 +339,21 @@ void relayPacket(
       "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     );
 
-    // Relay the SAME packet.
-    // Source node remains Node 1.
-    // Status remains unchanged.
-    // Sequence remains unchanged.
-
-    std::string data(
-      (char*)packet,
-      length
+    startRelay(
+      packet
     );
 
-    advertising->stop();
-    advertising->clearData();
-
-    NimBLEAdvertisementData advertisement;
-
-    advertisement.setFlags(0x06);
-    advertisement.setName("KAVACHAM");
-    advertisement.setManufacturerData(data);
-
-    advertising->setAdvertisementData(
-      advertisement
-    );
-
-    advertising->start();
-
-    Serial.println(
-      "BLE -> EMERGENCY RELAYED"
-    );
+    return;
   }
 
   // =================================================
   // MANUAL SOS
   // =================================================
 
-  else if (manualSOS) {
+  if (manualSOS) {
 
     Serial.println();
+
     Serial.println(
       "================================"
     );
@@ -228,38 +370,11 @@ void relayPacket(
       "================================"
     );
 
-    // Relay the SAME manual SOS packet.
-
-    std::string data(
-      (char*)packet,
-      length
+    startRelay(
+      packet
     );
 
-    advertising->stop();
-    advertising->clearData();
-
-    NimBLEAdvertisementData advertisement;
-
-    advertisement.setFlags(0x06);
-    advertisement.setName("KAVACHAM");
-    advertisement.setManufacturerData(data);
-
-    advertising->setAdvertisementData(
-      advertisement
-    );
-
-    advertising->start();
-
-    // Manual SOS should not remain
-    // continuously advertised.
-
-    delay(700);
-
-    advertising->stop();
-
-    Serial.println(
-      "Manual SOS relay finished."
-    );
+    return;
   }
 }
 
@@ -275,15 +390,18 @@ class ScanCallbacks :
   ) override {
 
     // ---------------------------------------------
-    // Only accept KAVACHAM devices
+    // Only KAVACHAM
     // ---------------------------------------------
 
-    if (!device->haveName()) {
+    if (
+      !device->haveName()
+    ) {
       return;
     }
 
     if (
-      device->getName() != "KAVACHAM"
+      device->getName() !=
+      "KAVACHAM"
     ) {
       return;
     }
@@ -301,15 +419,11 @@ class ScanCallbacks :
     std::string data =
       device->getManufacturerData();
 
-    // Must contain exactly our 7-byte packet.
-
-    if (data.length() != 7) {
+    if (
+      data.length() != 7
+    ) {
       return;
     }
-
-    // ---------------------------------------------
-    // Convert to packet
-    // ---------------------------------------------
 
     uint8_t packet[7];
 
@@ -320,15 +434,17 @@ class ScanCallbacks :
     );
 
     // ---------------------------------------------
-    // Check protocol identifier
+    // Protocol check
     // ---------------------------------------------
 
-    if (packet[0] != 0xCA) {
+    if (
+      packet[0] != 0xCA
+    ) {
       return;
     }
 
     // ---------------------------------------------
-    // Relay packet
+    // Process packet
     // ---------------------------------------------
 
     relayPacket(
@@ -346,11 +462,14 @@ ScanCallbacks scanCallbacks;
 
 void setup() {
 
-  Serial.begin(115200);
+  Serial.begin(
+    115200
+  );
 
   delay(1000);
 
   Serial.println();
+
   Serial.println(
     "================================"
   );
@@ -368,7 +487,7 @@ void setup() {
   );
 
   // ---------------------------------------------
-  // BLE initialization
+  // BLE
   // ---------------------------------------------
 
   NimBLEDevice::init(
@@ -376,31 +495,32 @@ void setup() {
   );
 
   advertising =
-    NimBLEDevice::getAdvertising();
+      NimBLEDevice::getAdvertising();
 
   // ---------------------------------------------
-  // BLE scanning
+  // Scan
   // ---------------------------------------------
 
-  NimBLEScan* scan =
-    NimBLEDevice::getScan();
+  scan =
+      NimBLEDevice::getScan();
 
   scan->setScanCallbacks(
     &scanCallbacks
   );
 
-  scan->setActiveScan(true);
-
-  scan->setInterval(45);
-
-  scan->setWindow(30);
-
-  // Continuous scanning
-
-  scan->start(
-    0,
-    false
+  scan->setActiveScan(
+    true
   );
+
+  scan->setInterval(
+    45
+  );
+
+  scan->setWindow(
+    30
+  );
+
+  startScanning();
 
   Serial.println(
     "BLE scanning started"
@@ -417,9 +537,30 @@ void setup() {
 
 void loop() {
 
-  // Node 2 is primarily handled by
-  // the BLE scan callback.
+  // ---------------------------------------------
+  // End relay without blocking
+  // ---------------------------------------------
 
-  delay(10);
+  if (
+    relayActive &&
+    millis() >= relayStopTime
+  ) {
+
+    stopRelay();
+  }
+
+  // ---------------------------------------------
+  // Safety recovery:
+  // make sure scanning is alive
+  // ---------------------------------------------
+
+  if (
+    !relayActive &&
+    !scan->isScanning()
+  ) {
+
+    startScanning();
+  }
+
+  delay(5);
 }
-```
