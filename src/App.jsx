@@ -61,7 +61,7 @@ function App() {
 
         {/* Center Column: Map and Timeline */}
         <div className="center-column">
-          <div className="map-container glass-card" style={{ padding: 0 }}>
+          <div className="map-container glass-card">
             <ZoneMap />
           </div>
           <div className="timeline-container glass-card">

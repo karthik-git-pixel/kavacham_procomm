@@ -29,11 +29,11 @@ export default function EventTimeline({ events = [] }) {
         <table className="timeline-table">
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Worker</th>
-              <th>Event</th>
-              <th>Value</th>
-              <th>Status</th>
+              <th className="time-col">Time</th>
+              <th className="worker-col">Worker</th>
+              <th className="event-col">Event</th>
+              <th className="value-col">Value</th>
+              <th className="status-col">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -59,40 +59,6 @@ export default function EventTimeline({ events = [] }) {
                   </tr>
                 );
               })
-            )}
-            
-            {/* Adding mock rows to match reference image if array is empty or small during init */}
-            {recentEvents.length < 4 && (
-              <>
-                <tr>
-                  <td className="time-col">12:14:25</td>
-                  <td className="worker-col">W1</td>
-                  <td className="event-col">Heartbeat received</td>
-                  <td className="value-col">—</td>
-                  <td className="status-col"><span className="status-dot safe"></span> Success</td>
-                </tr>
-                <tr>
-                  <td className="time-col">12:14:20</td>
-                  <td className="worker-col">W1</td>
-                  <td className="event-col">Sensor data update</td>
-                  <td className="value-col">Gas: 12 ppm, Temp: 28.4 °C</td>
-                  <td className="status-col"><span className="status-dot safe"></span> Normal</td>
-                </tr>
-                <tr>
-                  <td className="time-col">12:14:15</td>
-                  <td className="worker-col">W1</td>
-                  <td className="event-col">Location update</td>
-                  <td className="value-col">Shaft A</td>
-                  <td className="status-col"><span className="status-dot safe"></span> Normal</td>
-                </tr>
-                <tr>
-                  <td className="time-col">12:14:10</td>
-                  <td className="worker-col">System</td>
-                  <td className="event-col">Broker connected</td>
-                  <td className="value-col">—</td>
-                  <td className="status-col"><span className="status-dot safe"></span> Success</td>
-                </tr>
-              </>
             )}
           </tbody>
         </table>

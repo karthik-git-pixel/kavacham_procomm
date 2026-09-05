@@ -8,8 +8,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
-  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
 }
 
 .header-titles h3 {
@@ -70,10 +69,9 @@
 .zone-map-content {
   flex: 1;
   position: relative;
-  background-color: #3b4252; /* Darker bg to contrast with glowing green nodes like the reference image */
+  background-color: #3b4252;
   overflow: hidden;
-  border-bottom-left-radius: var(--radius-md);
-  border-bottom-right-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background-image: radial-gradient(circle at 50% 50%, #4c566a 0%, #2e3440 100%);
 }
 
