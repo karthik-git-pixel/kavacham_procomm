@@ -1,104 +1,265 @@
-import React from 'react';
-import { useNodeStore } from '../state/nodeStore';
+import React, { useRef, useState, useEffect, useId } from 'react';
+import Icon from './Icon';
+import { nodeSeverity, toneFor, relTime } from '../state/severity';
+import { rssiQuality } from '../state/signal';
 import './ZoneMap.css';
 
-export default function ZoneMap() {
-  const nodes = useNodeStore();
-  
-  const getNodeState = (id) => {
-    const node = nodes[id];
-    if (!node || node.link === 'offline') return { color: 'var(--offline)', pulse: false, opacity: 0.3 };
-    
-    const colors = ['var(--safe)', 'var(--caution)', 'var(--warning)', 'var(--danger)'];
-    const color = colors[node.alert || 0];
-    const pulse = node.alert >= 1;
-    return { color, pulse, opacity: 1, rssi: node.rssi };
+const VW = 480;
+const VH = 300;
+
+/** Fixed survey layout of the shaft network. */
+const GATEWAY = { x: 240, y: 40 };
+
+const LAYOUT = {
+  'WSN-1': { x: 108, y: 112, zone: 'Shaft A', labelAt: 'left' },
+  'WSN-2': { x: 384, y: 168, zone: 'Shaft B', labelAt: 'right' },
+  'WSN-3': { x: 176, y: 252, zone: 'Deep Shaft', labelAt: 'below' },
+};
+
+const SHAFTS = [
+  { from: [240, 52], to: [240, 252], axis: 'v' },   // main vertical shaft
+  { from: [240, 112], to: [108, 112], axis: 'h' },  // Shaft A
+  { from: [240, 168], to: [384, 168], axis: 'h' },  // Shaft B
+  { from: [240, 252], to: [176, 252], axis: 'h' },  // Deep Shaft
+];
+
+export default function ZoneMap({ nodes, selectedId, onSelect, now }) {
+  const [view, setView] = useState('3d');
+  const [hovered, setHovered] = useState(null);
+  const [isFull, setIsFull] = useState(false);
+  const wrapRef = useRef(null);
+  const gradId = useId();
+
+  useEffect(() => {
+    const onChange = () => setIsFull(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else wrapRef.current?.requestFullscreen?.().catch(() => {});
   };
 
-  const w1 = getNodeState('WSN-1');
-  const w2 = getNodeState('WSN-2');
-  const w3 = getNodeState('WSN-3');
+  const entries = Object.entries(LAYOUT)
+    .map(([id, pos]) => ({ id, pos, node: nodes[id] }))
+    .filter((e) => e.node);
 
-  const getOpacity = (rssi) => {
-    if (!rssi) return 0.2;
-    const mapped = Math.max(0.1, Math.min(1, (rssi + 100) / 50));
-    return mapped;
-  };
+  const activeId = hovered || selectedId;
+  const active = entries.find((e) => e.id === activeId);
+
+  const iso = view === '3d';
+  // Vertical compression alone reads as depth. A skew here would tilt the main
+  // shaft off vertical, which looks like a rendering fault rather than 3D.
+  const sceneTransform = iso ? 'translate(0 8) scale(1 0.86)' : undefined;
 
   return (
-    <div className="zone-map-container">
-      <div className="zone-map-header">
-        <div className="header-titles">
-          <h3>Underground Shaft Network</h3>
-          <p>Real-time location and status of all workers</p>
+    <section className="zmap card" ref={wrapRef} aria-label="Underground shaft network">
+      <header className="card-head">
+        <div>
+          <h2 className="card-title">Underground Shaft Network</h2>
+          <p className="card-sub">Live position and status of every node · click a node to inspect</p>
         </div>
-        <div className="header-controls">
-          <div className="view-toggle">
-            <button className="toggle-btn">2D View</button>
-            <button className="toggle-btn active">3D View</button>
+
+        <div className="zmap-controls">
+          <div className="segmented" role="group" aria-label="Map projection">
+            <button type="button" aria-pressed={view === '2d'} onClick={() => setView('2d')}>
+              <Icon name="grid" size={13} /> 2D
+            </button>
+            <button type="button" aria-pressed={view === '3d'} onClick={() => setView('3d')}>
+              <Icon name="cube" size={13} /> 3D
+            </button>
           </div>
-          <button className="icon-btn">⛶</button>
+          <button
+            type="button"
+            className="btn btn-icon"
+            onClick={toggleFullscreen}
+            aria-label={isFull ? 'Exit full screen' : 'View map full screen'}
+            title={isFull ? 'Exit full screen' : 'Full screen'}
+          >
+            <Icon name={isFull ? 'collapse' : 'expand'} size={15} />
+          </button>
         </div>
-      </div>
-      
-      <div className="zone-map-content">
-        <svg width="100%" height="250" viewBox="0 0 400 250" preserveAspectRatio="xMidYMid meet">
-          {/* Background decoration to match the 3D vibe if needed, but we keep SVG for now */}
-          {/* Gateway */}
-          <rect x="180" y="20" width="40" height="24" fill="var(--text)" rx="4" />
-          <text x="200" y="36" fill="#fff" fontSize="10" textAnchor="middle" fontWeight="bold">GW</text>
+      </header>
 
-          {/* Shaft lines */}
-          <g stroke="var(--border)" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" fill="none">
-            {/* Main shaft */}
-            <line x1="200" y1="44" x2="200" y2="200" />
-            {/* Shaft A (W1) */}
-            <line x1="200" y1="100" x2="80" y2="100" />
-            {/* Shaft B (W2) */}
-            <line x1="200" y1="140" x2="320" y2="140" />
-            {/* Deep Shaft (W3) */}
-            <line x1="200" y1="200" x2="160" y2="200" />
+      <div className={`zmap-stage ${iso ? 'is-iso' : 'is-flat'}`}>
+        <svg
+          viewBox={`0 0 ${VW} ${VH}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="zmap-svg"
+          role="img"
+          aria-label={`Shaft map showing ${entries.length} worker nodes`}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) onSelect(null);
+          }}
+        >
+          <defs>
+            <radialGradient id={`${gradId}-bg`} gradientUnits="userSpaceOnUse" cx={VW / 2} cy={VH * 0.42} r={VW * 0.72}>
+              <stop offset="0%" stopColor="var(--map-bg-1)" />
+              <stop offset="100%" stopColor="var(--map-bg-2)" />
+            </radialGradient>
+          </defs>
+
+          {/* Overdrawn well past the viewBox: the SVG is letterboxed inside a
+              wider stage, and a rect stopping at the viewBox edge leaves a
+              visible seam against the container. */}
+          <rect x={-VW} y={-VH} width={VW * 3} height={VH * 3} fill={`url(#${gradId}-bg)`} />
+
+          {/* Survey grid: only in the flat schematic, where measuring matters. */}
+          {!iso && (
+            <g className="zmap-grid">
+              {Array.from({ length: Math.floor(VW / 40) + 1 }, (_, i) => (
+                <line key={`v${i}`} x1={i * 40} y1="0" x2={i * 40} y2={VH} />
+              ))}
+              {Array.from({ length: Math.floor(VH / 40) + 1 }, (_, i) => (
+                <line key={`h${i}`} x1="0" y1={i * 40} x2={VW} y2={i * 40} />
+              ))}
+            </g>
+          )}
+
+          <g transform={sceneTransform}>
+            {/* Rock floor plate, sells the depth in the isometric view. */}
+            {iso && <ellipse cx="240" cy="268" rx="215" ry="34" className="zmap-floor" />}
+
+            {/* Each tunnel is drawn as a tube: a dark casing, the bore, then a
+                highlight along the lit edge. Gradients are avoided here — a
+                straight line has a zero-area bounding box, which collapses an
+                objectBoundingBox gradient to nothing. */}
+            {SHAFTS.map((s, i) => {
+              const [x1, y1] = s.from;
+              const [x2, y2] = s.to;
+              const off = s.axis === 'v' ? { x: -2.5, y: 0 } : { x: 0, y: -2.5 };
+              return (
+                <g key={`sh${i}`}>
+                  {iso && (
+                    <line
+                      x1={x1 + (s.axis === 'v' ? 3 : 0)} y1={y1 + (s.axis === 'v' ? 0 : 4)}
+                      x2={x2 + (s.axis === 'v' ? 3 : 0)} y2={y2 + (s.axis === 'v' ? 0 : 4)}
+                      className="zmap-shaft-ext"
+                    />
+                  )}
+                  <line x1={x1} y1={y1} x2={x2} y2={y2} className="zmap-shaft-casing" />
+                  <line x1={x1} y1={y1} x2={x2} y2={y2} className="zmap-shaft-bore" />
+                  {iso && (
+                    <line
+                      x1={x1 + off.x} y1={y1 + off.y}
+                      x2={x2 + off.x} y2={y2 + off.y}
+                      className="zmap-shaft-lit"
+                    />
+                  )}
+                </g>
+              );
+            })}
+
+            {/* Radio links: opacity carries link quality, dash animates traffic. */}
+            {entries.map(({ id, pos, node }) => {
+              const q = rssiQuality(node.rssi);
+              const offline = node.link === 'offline';
+              return (
+                <line
+                  key={`lnk${id}`}
+                  x1={GATEWAY.x} y1={GATEWAY.y}
+                  x2={pos.x} y2={pos.y}
+                  className={`zmap-link ${offline ? 'is-down' : ''}`}
+                  style={{ opacity: offline ? 0.12 : 0.18 + q.bars * 0.13 }}
+                />
+              );
+            })}
+
+            {/* Gateway */}
+            <g className="zmap-gw">
+              <rect x={GATEWAY.x - 24} y={GATEWAY.y - 16} width="48" height="30" rx="6" />
+              <text x={GATEWAY.x} y={GATEWAY.y + 4} textAnchor="middle">GW</text>
+            </g>
+
+            {/* Nodes */}
+            {entries.map(({ id, pos, node }) => {
+              const sev = nodeSeverity(node);
+              const offline = node.link === 'offline';
+              const tone = offline ? 'offline' : toneFor(sev.level);
+              const isSelected = selectedId === id;
+              const alerting = !offline && sev.level >= 1;
+
+              return (
+                <g
+                  key={id}
+                  className={`zmap-node ${isSelected ? 'is-selected' : ''} ${offline ? 'is-offline' : ''}`}
+                  style={{ color: `var(--${tone}-solid, var(--${tone}))` }}
+                  transform={`translate(${pos.x} ${pos.y})`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${node.label} in ${node.zone}, ${offline ? 'offline' : ['normal', 'caution', 'warning', 'emergency'][sev.level]}`}
+                  onClick={() => onSelect(isSelected ? null : id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelect(isSelected ? null : id);
+                    }
+                  }}
+                  onMouseEnter={() => setHovered(id)}
+                  onMouseLeave={() => setHovered((h) => (h === id ? null : h))}
+                  onFocus={() => setHovered(id)}
+                  onBlur={() => setHovered((h) => (h === id ? null : h))}
+                >
+                  {alerting && <circle r="9" className="zmap-ping" />}
+                  {isSelected && <circle r="15" className="zmap-select-ring" />}
+                  <circle r="12" className="zmap-hit" />
+                  <circle r="6.5" className="zmap-core" />
+                  <circle r="6.5" className="zmap-core-edge" />
+                </g>
+              );
+            })}
+
+            {/* Zone name plates */}
+            {entries.map(({ id, pos, node }) => {
+              const dx = pos.labelAt === 'left' ? -14 : pos.labelAt === 'right' ? 14 : 0;
+              const dy = pos.labelAt === 'below' ? 30 : -18;
+              const anchor = pos.labelAt === 'left' ? 'end' : pos.labelAt === 'right' ? 'start' : 'middle';
+              const w = node.zone.length * 6.1 + 16;
+              const x = anchor === 'end' ? pos.x + dx - w : anchor === 'start' ? pos.x + dx : pos.x - w / 2;
+              return (
+                <g key={`lbl${id}`} className="zmap-plate" pointerEvents="none">
+                  <rect x={x} y={pos.y + dy - 11} width={w} height="19" rx="9.5" />
+                  <text x={x + w / 2} y={pos.y + dy + 2} textAnchor="middle">{node.zone}</text>
+                </g>
+              );
+            })}
           </g>
-
-          {/* Labels - with styled badges like reference */}
-          <g>
-            <rect x="60" y="88" width="50" height="18" fill="var(--text)" rx="9"/>
-            <text x="85" y="100" fill="#fff" fontSize="9" textAnchor="middle" fontWeight="600">Shaft A</text>
-            
-            <rect x="290" y="128" width="50" height="18" fill="var(--text)" rx="9"/>
-            <text x="315" y="140" fill="#fff" fontSize="9" textAnchor="middle" fontWeight="600">Shaft B</text>
-            
-            <rect x="130" y="210" width="60" height="18" fill="var(--text)" rx="9"/>
-            <text x="160" y="222" fill="#fff" fontSize="9" textAnchor="middle" fontWeight="600">Deep Shaft</text>
-          </g>
-
-          {/* Nodes */}
-          {/* W1 */}
-          {w1.pulse && <circle cx="100" cy="100" r="16" fill={w1.color} opacity="0.2" className="node-pulse" />}
-          <circle cx="100" cy="100" r="6" fill={w1.color} opacity={w1.opacity} />
-          
-          {/* W2 */}
-          {w2.pulse && <circle cx="300" cy="140" r="16" fill={w2.color} opacity="0.2" className="node-pulse" />}
-          <circle cx="300" cy="140" r="6" fill={w2.color} opacity={w2.opacity} />
-
-          {/* W3 */}
-          {w3.pulse && <circle cx="180" cy="200" r="16" fill={w3.color} opacity="0.2" className="node-pulse" />}
-          <circle cx="180" cy="200" r="6" fill={w3.color} opacity={w3.opacity} />
         </svg>
 
-        {/* Legend overlay */}
-        <div className="map-legend">
-          <div className="legend-item">
-            <span className="legend-dot active"></span> Active Worker
+        {/* Detail card for the hovered or selected node. */}
+        {active && (
+          <div className="zmap-tip" role="status">
+            <div className="zmap-tip-head">
+              <span
+                className="dot dot-lg"
+                style={{
+                  color:
+                    active.node.link === 'offline'
+                      ? 'var(--offline-solid)'
+                      : `var(--${toneFor(nodeSeverity(active.node).level)}-solid, var(--${toneFor(nodeSeverity(active.node).level)}))`,
+                }}
+              />
+              <strong>{active.node.label}</strong>
+              <span className="zmap-tip-zone">{active.node.zone}</span>
+            </div>
+            <dl className="zmap-tip-grid">
+              <div><dt>Status</dt><dd>{active.node.link === 'offline' ? 'Offline' : ['Normal', 'Caution', 'Warning', 'Emergency'][nodeSeverity(active.node).level]}</dd></div>
+              <div><dt>Signal</dt><dd>{active.node.rssi == null ? '--' : `${Math.round(active.node.rssi)} dBm`}</dd></div>
+              <div><dt>Distance</dt><dd>{active.node.distance == null ? '--' : `${active.node.distance} m`}</dd></div>
+              <div><dt>Seen</dt><dd>{relTime(active.node.lastSeen, now)}</dd></div>
+            </dl>
           </div>
-          <div className="legend-item">
-            <span className="legend-dot inactive"></span> Inactive Worker
-          </div>
-          <div className="legend-item">
-            <span className="legend-line"></span> Tunnel / Shaft
-          </div>
-        </div>
+        )}
+
+        <ul className="zmap-legend">
+          <li><span className="dot" style={{ color: 'var(--safe-solid)' }} /> Normal</li>
+          <li><span className="dot" style={{ color: 'var(--caution-solid)' }} /> Caution</li>
+          <li><span className="dot" style={{ color: 'var(--danger-solid)' }} /> Emergency</li>
+          <li><span className="dot" style={{ color: 'var(--offline-solid)' }} /> Offline</li>
+          <li><span className="legend-line" /> Tunnel</li>
+        </ul>
       </div>
-    </div>
+    </section>
   );
 }

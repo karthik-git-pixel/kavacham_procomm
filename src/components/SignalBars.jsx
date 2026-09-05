@@ -1,20 +1,19 @@
 import React from 'react';
+import { rssiQuality } from '../state/signal';
 import './SignalBars.css';
 
-export default function SignalBars({ rssi = -100, disabled = false }) {
-  let bars = 0;
-  if (!disabled) {
-    if (rssi > -50) bars = 4;
-    else if (rssi > -65) bars = 3;
-    else if (rssi > -80) bars = 2;
-    else bars = 1;
-  }
+export default function SignalBars({ rssi, disabled = false, size = 14 }) {
+  const { bars, tone } = disabled ? { bars: 0, tone: 'offline' } : rssiQuality(rssi);
 
   return (
-    <div className={`signal-bars ${disabled ? 'disabled' : ''}`}>
-      {[1, 2, 3, 4].map(i => (
-        <div key={i} className={`bar ${i <= bars ? 'filled' : ''}`} style={{ height: `${20 + i * 20}%` }} />
+    <span className="bars" style={{ height: size, color: `var(--${tone})` }}>
+      {[1, 2, 3, 4].map((i) => (
+        <span
+          key={i}
+          className={`bar ${i <= bars ? 'on' : ''}`}
+          style={{ height: `${25 * i}%` }}
+        />
       ))}
-    </div>
+    </span>
   );
 }

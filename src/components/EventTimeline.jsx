@@ -1,68 +1,145 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Icon from './Icon';
+import { toneFor, relTime } from '../state/severity';
+import { clearEvents } from '../state/nodeStore';
 import './EventTimeline.css';
 
-export default function EventTimeline({ events = [] }) {
-  // Take last 10 events for the list
-  const recentEvents = [...events].sort((a, b) => b.time - a.time).slice(0, 10);
-  
-  // Format helpers
-  const formatTime = (ts) => new Date(ts).toLocaleTimeString('en-US', { hour12: false });
-  const formatWorker = (nodeId) => {
-    if (!nodeId) return 'System';
-    return nodeId.replace('WSN-', 'W');
+const clock = (ts) => new Date(ts).toLocaleTimeString('en-GB', { hour12: false });
+
+export default function EventTimeline({ events, nodes, selectedId, onSelect, now }) {
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [alertsOnly, setAlertsOnly] = useState(false);
+  const scrollRef = useRef(null);
+  const lastTopId = useRef(null);
+
+  const rows = useMemo(() => {
+    return events.filter((e) => {
+      if (alertsOnly && e.level === 0) return false;
+      if (selectedId && e.node !== selectedId) return false;
+      return true;
+    });
+  }, [events, alertsOnly, selectedId]);
+
+  // Newest events land at the top, so "auto-scroll" means keeping the top in
+  // view rather than chasing the bottom of the list.
+  useEffect(() => {
+    const top = rows[0]?.id ?? null;
+    if (autoScroll && top !== lastTopId.current && scrollRef.current) {
+      scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    lastTopId.current = top;
+  }, [rows, autoScroll]);
+
+  const nameOf = (id) => {
+    if (!id) return 'System';
+    return nodes?.[id]?.label || id;
   };
 
+  const selectedLabel = selectedId ? nameOf(selectedId) : null;
+
   return (
-    <div className="event-timeline-container">
-      <div className="timeline-header">
-        <h3 className="timeline-title">Event Timeline (Last 60s)</h3>
-        <div className="timeline-controls">
-          <span className="auto-scroll-label">Auto-scroll</span>
-          <label className="switch">
-            <input type="checkbox" defaultChecked />
-            <span className="slider round"></span>
-          </label>
+    <section className="etl card" aria-label="Event timeline">
+      <header className="card-head etl-head">
+        <div className="etl-title-wrap">
+          <h2 className="card-title">
+            Event Timeline
+            <span className="chip chip-quiet tnum">{rows.length}</span>
+          </h2>
+          {selectedLabel && (
+            <button type="button" className="chip chip-info etl-focus" onClick={() => onSelect(null)}>
+              Filtered to {selectedLabel}
+              <Icon name="close" size={11} />
+            </button>
+          )}
         </div>
-      </div>
-      
-      <div className="timeline-table-wrap">
-        <table className="timeline-table">
-          <thead>
-            <tr>
-              <th className="time-col">Time</th>
-              <th className="worker-col">Worker</th>
-              <th className="event-col">Event</th>
-              <th className="value-col">Value</th>
-              <th className="status-col">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recentEvents.length === 0 ? (
+
+        <div className="etl-controls">
+          <button
+            type="button"
+            className={`btn btn-ghost etl-toggle ${alertsOnly ? 'on' : ''}`}
+            aria-pressed={alertsOnly}
+            onClick={() => setAlertsOnly((v) => !v)}
+          >
+            <Icon name="filter" size={13} /> Alerts only
+          </button>
+
+          <label className="switch etl-switch">
+            <span className="etl-switch-label">Auto-scroll</span>
+            <input
+              type="checkbox"
+              checked={autoScroll}
+              onChange={(e) => setAutoScroll(e.target.checked)}
+            />
+            <span className="track" />
+          </label>
+
+          <button
+            type="button"
+            className="btn btn-icon btn-ghost"
+            onClick={clearEvents}
+            title="Clear the event log"
+            aria-label="Clear the event log"
+          >
+            <Icon name="trash" size={14} />
+          </button>
+        </div>
+      </header>
+
+      <div className="etl-scroll scroll-y" ref={scrollRef}>
+        {rows.length === 0 ? (
+          <div className="empty">
+            <Icon name="clock" size={22} />
+            <strong>No events yet</strong>
+            <span>
+              {alertsOnly || selectedId
+                ? 'Nothing matches the current filter.'
+                : 'Threshold crossings, falls and SOS calls appear here as they happen.'}
+            </span>
+          </div>
+        ) : (
+          <table className="etl-table">
+            <thead>
               <tr>
-                <td colSpan="5" className="empty-state">No events recorded.</td>
+                <th scope="col" className="c-time">Time</th>
+                <th scope="col" className="c-worker">Worker</th>
+                <th scope="col" className="c-event">Event</th>
+                <th scope="col" className="c-value">Value</th>
+                <th scope="col" className="c-status">Status</th>
               </tr>
-            ) : (
-              recentEvents.map((ev, i) => {
-                const statusType = ev.type === 'error' || ev.type === 'offline' ? 'danger' : (ev.type === 'warn' ? 'warning' : 'safe');
-                const statusText = ev.type === 'error' ? 'Error' : (ev.type === 'offline' ? 'Offline' : (ev.type === 'warn' ? 'Warning' : (ev.type === 'connected' ? 'Success' : 'Normal')));
-                
+            </thead>
+            <tbody>
+              {rows.map((e) => {
+                const tone = toneFor(e.level);
                 return (
-                  <tr key={i}>
-                    <td className="time-col">{formatTime(ev.time)}</td>
-                    <td className="worker-col">{formatWorker(ev.node)}</td>
-                    <td className="event-col">{ev.desc}</td>
-                    <td className="value-col">{ev.value || '—'}</td>
-                    <td className="status-col">
-                      <span className={`status-dot ${statusType}`}></span>
-                      {statusText}
+                  <tr key={e.id} className={`lvl-${e.level}`}>
+                    <td className="c-time tnum">
+                      <span className="etl-clock">{clock(e.time)}</span>
+                      <span className="etl-rel">{relTime(e.time, now)}</span>
+                    </td>
+                    <td className="c-worker">
+                      {e.node ? (
+                        <button type="button" className="etl-worker-btn" onClick={() => onSelect(e.node)}>
+                          {nameOf(e.node)}
+                        </button>
+                      ) : (
+                        <span className="etl-system">System</span>
+                      )}
+                    </td>
+                    <td className="c-event">{e.desc}</td>
+                    <td className="c-value tnum">{e.value || '—'}</td>
+                    <td className="c-status">
+                      <span className={`chip chip-${tone === 'safe' ? 'quiet' : tone}`}>
+                        <span className="dot" style={{ color: `var(--${tone}-solid, var(--${tone}))` }} />
+                        {e.kind}
+                      </span>
                     </td>
                   </tr>
                 );
-              })
-            )}
-          </tbody>
-        </table>
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
-    </div>
+    </section>
   );
 }

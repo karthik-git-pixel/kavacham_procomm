@@ -1,65 +1,88 @@
-let audioCtx = null;
-let osc = null;
-let activeInterval = null;
+/**
+ * Alarm tones. Each severity gets a distinct rhythm so an operator can identify
+ * the level without looking at the screen.
+ *
+ * Browsers block audio until a user gesture, so the context is created lazily
+ * and resumed on the first interaction.
+ */
 
-const startBeep = (freq) => {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let ctx = null;
+let timer = null;
+let currentLevel = 0;
+
+const PATTERNS = {
+  1: { freq: 660, beeps: 2, on: 140, gap: 130, every: 3000 },
+  2: { freq: 880, beeps: 3, on: 120, gap: 110, every: 1800 },
+  3: { freq: 1040, beeps: 5, on: 110, gap: 90, every: 1100 },
+};
+
+function ensureCtx() {
+  if (!ctx) {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return null;
+    ctx = new Ctor();
   }
-  if (osc) return;
-  osc = audioCtx.createOscillator();
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  return ctx;
+}
+
+/** One shaped beep — the ramps keep it from clicking. */
+function beep(freq, startAt, duration) {
+  const ac = ensureCtx();
+  if (!ac) return;
+
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+
   osc.type = 'square';
-  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-  
-  const gainNode = audioCtx.createGain();
-  gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-  
-  osc.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-  osc.start();
-};
+  osc.frequency.setValueAtTime(freq, startAt);
 
-const stopBeep = () => {
-  if (osc) {
-    osc.stop();
-    osc.disconnect();
-    osc = null;
+  gain.gain.setValueAtTime(0, startAt);
+  gain.gain.linearRampToValueAtTime(0.07, startAt + 0.01);
+  gain.gain.setValueAtTime(0.07, startAt + duration - 0.02);
+  gain.gain.linearRampToValueAtTime(0, startAt + duration);
+
+  osc.connect(gain);
+  gain.connect(ac.destination);
+  osc.start(startAt);
+  osc.stop(startAt + duration + 0.02);
+}
+
+function burst(pattern) {
+  const ac = ensureCtx();
+  if (!ac) return;
+  const step = (pattern.on + pattern.gap) / 1000;
+  for (let i = 0; i < pattern.beeps; i += 1) {
+    beep(pattern.freq, ac.currentTime + i * step, pattern.on / 1000);
   }
-};
+}
 
-export const updateAudioAlarm = (level, muted) => {
-  if (muted || level === 0) {
-    clearInterval(activeInterval);
-    activeInterval = null;
-    stopBeep();
-    return;
-  }
+export function stopAlarm() {
+  clearInterval(timer);
+  timer = null;
+  currentLevel = 0;
+}
 
-  // To prevent multiple intervals
-  if (activeInterval) return;
+/**
+ * Drives the alarm from the site severity. Re-arms whenever the level changes,
+ * so an escalation is heard immediately rather than after the current pattern
+ * finishes.
+ */
+export function updateAudioAlarm(level, muted) {
+  const target = muted ? 0 : Math.min(3, Math.max(0, level || 0));
 
-  if (level === 1) { // CAUTION: double beep 660Hz
-    activeInterval = setInterval(() => {
-      startBeep(660);
-      setTimeout(stopBeep, 200);
-      setTimeout(() => { startBeep(660); }, 300);
-      setTimeout(stopBeep, 500);
-    }, 2000);
-  } else if (level === 2) { // WARNING: triple beep 880Hz
-    activeInterval = setInterval(() => {
-      startBeep(880);
-      setTimeout(stopBeep, 150);
-      setTimeout(() => { startBeep(880); }, 250);
-      setTimeout(stopBeep, 400);
-      setTimeout(() => { startBeep(880); }, 500);
-      setTimeout(stopBeep, 650);
-    }, 1500);
-  } else if (level >= 3) { // EMERGENCY / EVAC: continuous warble 1kHz
-    let high = true;
-    activeInterval = setInterval(() => {
-      stopBeep();
-      startBeep(high ? 1000 : 800);
-      high = !high;
-    }, 200);
-  }
-};
+  if (target === currentLevel) return;
+  stopAlarm();
+  currentLevel = target;
+
+  if (target === 0) return;
+
+  const pattern = PATTERNS[target];
+  burst(pattern);
+  timer = setInterval(() => burst(pattern), pattern.every);
+}
+
+/** Call from a click/keypress so the first alarm is not swallowed by autoplay policy. */
+export function primeAudio() {
+  ensureCtx();
+}

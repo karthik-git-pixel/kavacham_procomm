@@ -1,115 +1,102 @@
-.event-timeline-container {
+.etl {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.timeline-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
+.etl-head { flex-wrap: wrap; row-gap: var(--s-2); }
 
-.timeline-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0;
-}
+.etl-title-wrap { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
 
-.timeline-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.auto-scroll-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-/* Switch styling */
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 32px;
-  height: 18px;
-}
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.slider {
-  position: absolute;
+.etl-focus {
+  border: 0;
   cursor: pointer;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background-color: #cbd5e1;
-  transition: .4s;
+  height: 22px;
 }
-.slider:before {
-  position: absolute;
-  content: "";
-  height: 14px;
-  width: 14px;
-  left: 2px;
-  bottom: 2px;
-  background-color: white;
-  transition: .4s;
-}
-input:checked + .slider {
-  background-color: var(--safe);
-}
-input:checked + .slider:before {
-  transform: translateX(14px);
-}
-.slider.round {
-  border-radius: 18px;
-}
-.slider.round:before {
-  border-radius: 50%;
+.etl-focus:hover { filter: brightness(0.96); }
+
+.etl-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
 }
 
-.timeline-table-wrap {
+.etl-toggle { height: 28px; font-size: var(--fs-sm); color: var(--text-2); }
+.etl-toggle.on { background: var(--info-tint); color: var(--info); }
+
+.etl-switch { gap: 6px; }
+.etl-switch-label { font-size: var(--fs-sm); color: var(--text-2); }
+
+.etl-scroll {
   flex: 1;
-  overflow-y: auto;
-  padding: 0;
+  min-height: 0;
+  padding: 0 var(--s-4) var(--s-3);
 }
 
-.timeline-table {
+/* --- Table --------------------------------------------------------------- */
+.etl-table {
   width: 100%;
   border-collapse: collapse;
+  font-size: var(--fs-sm);
   text-align: left;
-  font-size: 12px;
 }
 
-.timeline-table th {
+.etl-table th {
   position: sticky;
   top: 0;
-  background-color: var(--card-bg);
-  color: var(--text-secondary);
-  font-weight: 500;
-  padding: 12px 8px;
+  z-index: 1;
+  padding: var(--s-2) var(--s-2);
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
-.timeline-table td {
-  padding: 12px 8px;
-  border-bottom: 1px solid #f1f5f9;
+.etl-table td {
+  padding: 7px var(--s-2);
+  border-bottom: 1px solid var(--border);
   color: var(--text);
+  vertical-align: middle;
 }
 
-.time-col { color: var(--text-secondary) !important; width: 80px; }
-.worker-col { font-weight: 600; width: 60px; }
-.event-col { color: var(--text); }
-.value-col { color: var(--text-secondary) !important; }
-.status-col { display: flex; align-items: center; gap: 6px; }
+.etl-table tbody tr { transition: background var(--t-fast); }
+.etl-table tbody tr:hover { background: var(--surface-2); }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+/* Severity tints the whole row, so a scan down the log finds trouble fast. */
+.etl-table tr.lvl-1 { background: color-mix(in srgb, var(--caution-tint) 55%, transparent); }
+.etl-table tr.lvl-2 { background: color-mix(in srgb, var(--warning-tint) 60%, transparent); }
+.etl-table tr.lvl-3 { background: color-mix(in srgb, var(--danger-tint) 70%, transparent); }
+
+.c-time { width: 108px; white-space: nowrap; }
+.etl-clock { color: var(--text-2); }
+.etl-rel { display: block; font-size: var(--fs-2xs); color: var(--text-3); }
+
+.c-worker { width: 92px; }
+
+.etl-worker-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  color: var(--info);
+  text-align: left;
 }
-.status-dot.safe { background-color: var(--safe); }
-.status-dot.warning { background-color: var(--warning); }
-.status-dot.danger { background-color: var(--danger); }
+.etl-worker-btn:hover { text-decoration: underline; }
+
+.etl-system { color: var(--text-3); font-weight: 600; }
+
+.c-event { min-width: 150px; }
+.c-value { width: 110px; color: var(--text-2); white-space: nowrap; }
+.c-status { width: 118px; }
+
+@media (max-width: 900px) {
+  .c-value { display: none; }
+  .etl-table th.c-value { display: none; }
+}

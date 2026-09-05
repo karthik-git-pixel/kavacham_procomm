@@ -1,31 +1,179 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+/* ==========================================================================
+   KAVACHAM — Design tokens
+   Single source of truth for colour, type, space, radius and elevation.
+   Light theme is the default; dark theme applies via the OS preference or an
+   explicit data-theme attribute set by the theme toggle.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --panel:      #D7DADD;  /* painted steel, page background */
-  --card:       #F2F4F5;  /* instrument face */
-  --card-sunk:  #C6CACE;  /* recessed wells, gauge backing */
-  --ink:        #14181B;  /* primary text */
-  --ink-soft:   #5D666D;  /* labels, units */
-  --rule:       #A8AEB3;  /* hairlines, tick marks */
-  --safe:       #1F7A45;
-  --caution:    #C98A00;
-  --warning:    #DE6B1F;
-  --danger:     #C42B22;
-  --danger-hot: #FF3B2F;  /* pulse peak only */
-  
-  --font-base: 'IBM Plex Sans', sans-serif;
-  --font-display: 'IBM Plex Sans Condensed', sans-serif;
+  /* --- Surfaces ------------------------------------------------------- */
+  --bg:            #eef2f6;
+  --surface:       #ffffff;
+  --surface-2:     #f8fafc;
+  --surface-3:     #f1f5f9;
+  --surface-inset: #eef2f7;
+  --overlay:       rgba(15, 23, 42, 0.45);
+
+  /* --- Lines ---------------------------------------------------------- */
+  --border:        #e3e8ef;
+  --border-strong: #cbd5e1;
+
+  /* --- Text ----------------------------------------------------------- */
+  --text:          #0f172a;
+  --text-2:        #4b5768;
+  --text-3:        #8a95a6;
+  --text-invert:   #ffffff;
+
+  /* --- Status: foreground (text/icons), tint (fills), solid (dots) ---- */
+  --safe:          #047d5f;
+  --safe-tint:     rgba(16, 185, 129, 0.12);
+  --safe-solid:    #10b981;
+
+  --caution:       #a86400;
+  --caution-tint:  rgba(245, 158, 11, 0.14);
+  --caution-solid: #f59e0b;
+
+  --warning:       #c2410c;
+  --warning-tint:  rgba(249, 115, 22, 0.13);
+  --warning-solid: #f97316;
+
+  --danger:        #c02626;
+  --danger-tint:   rgba(239, 68, 68, 0.12);
+  --danger-solid:  #ef4444;
+
+  --info:          #1d4ed8;
+  --info-tint:     rgba(59, 130, 246, 0.12);
+  --info-solid:    #3b82f6;
+
+  --offline:       #77839a;
+  --offline-tint:  rgba(148, 163, 184, 0.16);
+  --offline-solid: #94a3b8;
+
+  /* Map / 3D shaft scene stays dark in both themes */
+  --map-bg-1:      #4a5468;
+  --map-bg-2:      #232a38;
+  --map-line:      #8b95a8;
+  --map-ink:       #e6ebf2;
+
+  /* --- Typography ----------------------------------------------------- */
+  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+
+  --fs-2xs: 10px;
+  --fs-xs:  11px;
+  --fs-sm:  12px;
+  --fs-md:  13px;
+  --fs-base:14px;
+  --fs-lg:  16px;
+  --fs-xl:  20px;
+  --fs-2xl: 26px;
+  --fs-3xl: 32px;
+
+  /* --- Space (4px base) ----------------------------------------------- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+
+  /* --- Radius --------------------------------------------------------- */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-full: 999px;
+
+  /* --- Elevation ------------------------------------------------------ */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 14px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 8px 30px rgba(15, 23, 42, 0.12);
+  --ring:      0 0 0 3px rgba(59, 130, 246, 0.35);
+
+  /* --- Motion --------------------------------------------------------- */
+  --t-fast: 120ms ease;
+  --t-med:  220ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* --- Layout --------------------------------------------------------- */
+  --nav-h: 60px;
+  --rail-w: 420px;
+  --max-w: 1860px;
+
+  color-scheme: light;
 }
 
-body {
-  margin: 0;
-  padding: 0;
-  background-color: var(--panel);
-  color: var(--ink);
-  font-family: var(--font-base);
-  -webkit-font-smoothing: antialiased;
+/* --- Dark theme ------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg:            #070b14;
+    --surface:       #0f1725;
+    --surface-2:     #141d2e;
+    --surface-3:     #1a2436;
+    --surface-inset: #0b1220;
+    --overlay:       rgba(2, 6, 15, 0.65);
+
+    --border:        #222e44;
+    --border-strong: #33415c;
+
+    --text:          #eef2f8;
+    --text-2:        #9aa8bd;
+    --text-3:        #6b7a91;
+
+    --safe:          #34d399;
+    --safe-tint:     rgba(52, 211, 153, 0.14);
+    --caution:       #fbbf24;
+    --caution-tint:  rgba(251, 191, 36, 0.14);
+    --warning:       #fb923c;
+    --warning-tint:  rgba(251, 146, 60, 0.14);
+    --danger:        #f87171;
+    --danger-tint:   rgba(248, 113, 113, 0.15);
+    --info:          #60a5fa;
+    --info-tint:     rgba(96, 165, 250, 0.14);
+    --offline:       #8494ad;
+    --offline-tint:  rgba(132, 148, 173, 0.16);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
+
+    color-scheme: dark;
+  }
 }
 
-* {
-  box-sizing: border-box;
+:root[data-theme='dark'] {
+  --bg:            #070b14;
+  --surface:       #0f1725;
+  --surface-2:     #141d2e;
+  --surface-3:     #1a2436;
+  --surface-inset: #0b1220;
+  --overlay:       rgba(2, 6, 15, 0.65);
+
+  --border:        #222e44;
+  --border-strong: #33415c;
+
+  --text:          #eef2f8;
+  --text-2:        #9aa8bd;
+  --text-3:        #6b7a91;
+
+  --safe:          #34d399;
+  --safe-tint:     rgba(52, 211, 153, 0.14);
+  --caution:       #fbbf24;
+  --caution-tint:  rgba(251, 191, 36, 0.14);
+  --warning:       #fb923c;
+  --warning-tint:  rgba(251, 146, 60, 0.14);
+  --danger:        #f87171;
+  --danger-tint:   rgba(248, 113, 113, 0.15);
+  --info:          #60a5fa;
+  --info-tint:     rgba(96, 165, 250, 0.14);
+  --offline:       #8494ad;
+  --offline-tint:  rgba(132, 148, 173, 0.16);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
 }

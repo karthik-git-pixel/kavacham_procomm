@@ -1,54 +1,60 @@
 import React from 'react';
-import './SystemSummary.css';
+import Icon from './Icon';
+import { nodeSeverity, siteSeverity } from '../state/severity';
+import './Summary.css';
+
+const HEADLINE = [
+  { text: 'All systems operational', tone: 'safe', icon: 'check' },
+  { text: 'Caution — elevated readings', tone: 'caution', icon: 'alert' },
+  { text: 'Warning — action required', tone: 'warning', icon: 'alert' },
+  { text: 'Emergency — respond now', tone: 'danger', icon: 'siren' },
+];
 
 export default function SystemSummary({ nodes }) {
-  const nodesArray = Object.values(nodes);
-  const total = nodesArray.length;
-  const online = nodesArray.filter(n => (Date.now() - (n.lastSeen || 0)) < 5000).length;
-  const offline = total - online;
-  const alerts = nodesArray.filter(n => n.alert > 0).length;
+  const list = Object.values(nodes || {});
+  const online = list.filter((n) => n.link !== 'offline').length;
+  const offline = list.length - online;
+  const alerts = list.filter((n) => nodeSeverity(n).level > 0).length;
+  const site = siteSeverity(nodes);
 
-  const isOperational = alerts === 0 && online === total;
+  // Offline nodes are their own problem even when nothing is alarming.
+  const headline = offline > 0 && site.level === 0
+    ? { text: `${offline} node${offline > 1 ? 's' : ''} not reporting`, tone: 'offline', icon: 'wifiOff' }
+    : HEADLINE[site.level];
+
+  const tiles = [
+    { key: 'total', label: 'Total workers', value: list.length, icon: 'users', tone: 'info' },
+    { key: 'online', label: 'Online', value: online, icon: 'user', tone: 'safe' },
+    { key: 'offline', label: 'Offline', value: offline, icon: 'userOff', tone: offline ? 'danger' : 'offline' },
+    { key: 'alert', label: 'Active alerts', value: alerts, icon: 'alert', tone: alerts ? 'warning' : 'offline' },
+  ];
 
   return (
-    <div className="glass-card system-summary">
-      <h3 className="card-title">System Status</h3>
-      
-      <div className={`status-header ${isOperational ? 'operational' : 'issue'}`}>
-        <span className="status-dot"></span>
-        {isOperational ? 'All Systems Operational' : 'Issues Detected'}
+    <section className="card sum" aria-label="System status">
+      <header className="card-head">
+        <h2 className="card-title">System Status</h2>
+      </header>
+
+      <div className={`sum-headline tone-${headline.tone}`} role="status">
+        <Icon name={headline.icon} size={15} />
+        <span>{headline.text}</span>
       </div>
 
-      <div className="summary-grid">
-        <div className="summary-item">
-          <div className="summary-icon blue">👥</div>
-          <div className="summary-data">
-            <div className="summary-value">{total}</div>
-            <div className="summary-label">Total Workers</div>
+      <div className="sum-grid">
+        {tiles.map((t) => (
+          <div
+            key={t.key}
+            className={`sum-tile ${t.value > 0 && (t.key === 'offline' || t.key === 'alert') ? 'is-hot' : ''}`}
+            style={{ '--tone': `var(--${t.tone})`, '--tone-tint': `var(--${t.tone}-tint)` }}
+          >
+            <span className="sum-tile-icon"><Icon name={t.icon} size={16} /></span>
+            <span className="sum-tile-body">
+              <span className="sum-tile-value tnum">{t.value}</span>
+              <span className="sum-tile-label">{t.label}</span>
+            </span>
           </div>
-        </div>
-        <div className="summary-item">
-          <div className="summary-icon green">👤</div>
-          <div className="summary-data">
-            <div className="summary-value">{online}</div>
-            <div className="summary-label">Online</div>
-          </div>
-        </div>
-        <div className="summary-item">
-          <div className="summary-icon red">👤</div>
-          <div className="summary-data">
-            <div className="summary-value">{offline}</div>
-            <div className="summary-label">Offline</div>
-          </div>
-        </div>
-        <div className="summary-item">
-          <div className="summary-icon orange">⚠️</div>
-          <div className="summary-data">
-            <div className="summary-value">{alerts}</div>
-            <div className="summary-label">Active Alerts</div>
-          </div>
-        </div>
+        ))}
       </div>
-    </div>
+    </section>
   );
 }

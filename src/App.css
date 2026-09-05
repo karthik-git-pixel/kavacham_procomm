@@ -1,119 +1,87 @@
-.loading-screen {
-  position: fixed;
-  inset: 0;
-  background-color: var(--bg);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  color: var(--text);
-}
-
-.loading-logo {
-  width: 120px;
-  height: 120px;
-  object-fit: contain;
-  margin-bottom: 24px;
-  animation: pulse-logo 2s infinite ease-in-out;
-}
-
-.loading-title {
-  font-family: var(--heading);
-  font-size: 32px;
-  letter-spacing: 4px;
-  font-weight: bold;
-}
-
-@keyframes pulse-logo {
-  0% { transform: scale(1); opacity: 0.8; }
-  50% { transform: scale(1.1); opacity: 1; }
-  100% { transform: scale(1); opacity: 0.8; }
-}
-
-.dashboard-container {
+.app {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  width: 100vw;
-  background-color: var(--bg);
-  color: var(--text);
+  height: 100dvh;
   overflow: hidden;
+  background: var(--bg);
 }
 
-.dashboard-content {
-  display: flex;
+.app-body {
   flex: 1;
-  overflow: hidden;
-  padding: 16px 24px;
-  gap: 24px;
-  max-width: 1600px;
-  margin: 0 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--rail-w);
+  gap: var(--s-4);
+  padding: var(--s-4);
+  max-width: var(--max-w);
   width: 100%;
+  margin: 0 auto;
 }
 
-.left-column {
-  flex: 0 0 320px;
+.col {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  overflow-y: auto;
-  padding-right: 4px; /* Scrollbar breathing room */
+  gap: var(--s-3);
+  min-height: 0;
+  min-width: 0;
 }
 
-.center-column {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow: hidden;
+/* The map takes the space; the timeline keeps a readable floor. */
+.col-main .zmap { flex: 3 1 300px; }
+.col-main .etl { flex: 2 1 240px; max-height: 46%; }
+
+.col-rail { padding-right: 2px; }
+
+/* --- Wide screens: give the map more room ------------------------------- */
+@media (min-width: 1900px) {
+  .app-body { grid-template-columns: 460px minmax(0, 1fr) 460px; }
 }
 
-.right-column {
-  flex: 0 0 320px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow-y: auto;
-}
-
-.map-container {
-  flex: 2;
-  min-height: 250px;
-  overflow: hidden;
-}
-
-.timeline-container {
-  flex: 1;
-  min-height: 200px;
-  overflow: hidden;
-}
-
-/* Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-@media (max-width: 1200px) {
-  .dashboard-content {
-    flex-direction: column;
-    overflow-y: auto;
+/* --- Laptop: fold the right rail under the main column ------------------ */
+@media (max-width: 1400px) {
+  .app-body {
+    grid-template-columns: 400px minmax(0, 1fr);
+    grid-template-areas:
+      "workers main"
+      "workers rail";
+    grid-template-rows: minmax(0, 1fr) auto;
   }
-  
-  .left-column, .center-column, .right-column {
-    flex: none;
+  .col-workers { grid-area: workers; }
+  .col-main { grid-area: main; }
+  .col-rail {
+    grid-area: rail;
+    flex-direction: row;
+    gap: var(--s-3);
     overflow: visible;
-    width: 100%;
   }
+  .col-rail > * { flex: 1; min-width: 0; }
+}
+
+/* --- Tablet and below: one scrolling column ----------------------------- */
+@media (max-width: 1000px) {
+  .app { overflow: auto; height: auto; min-height: 100vh; }
+  body { overflow: auto; }
+
+  .app-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "main" "workers" "rail";
+    grid-template-rows: none;
+  }
+
+  .col { min-height: 0; }
+  .col-main .zmap { flex: none; min-height: 320px; }
+  .col-main .etl { flex: none; max-height: none; }
+  .etl-scroll { max-height: 340px; }
+
+  .wlist-scroll { overflow: visible; }
+
+  .col-rail { flex-direction: column; }
+}
+
+@media (max-width: 620px) {
+  .app-body { padding: var(--s-3); gap: var(--s-3); }
+  .wcard-strip { grid-template-columns: repeat(2, 1fr); }
+  .wcard-gauges { grid-template-columns: 1fr; }
+  .sum-grid { grid-template-columns: 1fr; }
 }

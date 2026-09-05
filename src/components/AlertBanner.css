@@ -1,0 +1,90 @@
+.abanner {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 10px var(--s-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--tone-bg);
+  color: var(--tone-fg);
+  animation: fadeUp var(--t-med);
+  flex: none;
+}
+
+.abanner.tone-caution { --tone-bg: var(--caution-tint); --tone-fg: var(--caution); --tone-solid: var(--caution-solid); }
+.abanner.tone-warning { --tone-bg: var(--warning-tint); --tone-fg: var(--warning); --tone-solid: var(--warning-solid); }
+.abanner.tone-danger  { --tone-bg: var(--danger-tint);  --tone-fg: var(--danger);  --tone-solid: var(--danger-solid); }
+
+.abanner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--tone-solid) 18%, transparent);
+  color: var(--tone-fg);
+}
+
+.abanner-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  min-width: 0;
+  flex: 1;
+}
+
+.abanner-title {
+  font-size: var(--fs-base);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.abanner-detail {
+  font-size: var(--fs-md);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.abanner-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.abanner-locate { height: 28px; font-size: var(--fs-sm); }
+.abanner-mute { height: 28px; width: 28px; }
+.abanner-ack { height: 28px; font-size: var(--fs-sm); font-weight: 600; }
+
+/* --- Evacuation: the one state allowed to shout --------------------------- */
+.abanner.is-evac {
+  background: var(--danger-solid);
+  color: #fff;
+  border-bottom-color: var(--danger-solid);
+  padding: var(--s-3) var(--s-4);
+  animation: evacFlash 1.4s ease-in-out infinite;
+}
+
+@keyframes evacFlash {
+  0%, 100% { background: var(--danger-solid); }
+  50%      { background: color-mix(in srgb, var(--danger-solid) 78%, #000); }
+}
+
+.abanner.is-evac .abanner-icon { background: rgba(255, 255, 255, 0.2); color: #fff; }
+.abanner.is-evac .abanner-title { font-size: var(--fs-xl); text-transform: uppercase; letter-spacing: 0.04em; }
+.abanner.is-evac .abanner-detail { color: rgba(255, 255, 255, 0.92); font-size: var(--fs-base); }
+.abanner.is-evac .btn {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: #fff;
+}
+.abanner.is-evac .btn:hover { background: rgba(255, 255, 255, 0.24); color: #fff; }
+
+@media (max-width: 1100px) {
+  .abanner-detail { display: none; }
+  .abanner-locate { display: none; }
+}

@@ -1,218 +1,175 @@
-import { updateNode } from './nodeStore';
+import { updateNode, addEvent } from './nodeStore';
 
-let isMockRunning = false;
-let killWsn3 = false;
+/**
+ * Simulated telemetry, used when no MQTT broker is reachable so the dashboard
+ * is never a screen of dashes. Scenarios are exported so the UI can trigger
+ * them from real buttons instead of undiscoverable keypresses.
+ */
 
-let scenarios = {
-  gasRampWsn2: false,
-  gasRampStartTime: 0,
-  fallWsn1: false,
-  fallStartTime: 0,
-  sosWsn3: false,
-  zoneEvac: false,
-  heatBuildWsn3: false,
-  heatStartTime: 0,
-  dhtFailWsn3: false,
-  dhtFailStartTime: 0,
-};
+export const SCENARIOS = [
+  { id: 'idle',  label: 'All clear',      hint: 'Reset every node to normal readings' },
+  { id: 'gas',   label: 'Gas leak',       hint: 'Worker 2 gas ramps to warning, then clears' },
+  { id: 'fall',  label: 'Fall impact',    hint: 'Worker 1 takes an impact and triggers a fall' },
+  { id: 'sos',   label: 'SOS pressed',    hint: 'Worker 3 raises a manual distress call' },
+  { id: 'heat',  label: 'Heat build-up',  hint: 'Worker 3 climbs into the emergency temperature band' },
+  { id: 'fault', label: 'Sensor fault',   hint: 'Worker 3 climate sensor returns no reading' },
+  { id: 'evac',  label: 'Zone evacuation', hint: 'Two shafts go critical at once' },
+  { id: 'drop',  label: 'Link loss',      hint: 'Worker 3 stops transmitting' },
+];
 
-// Reset scenarios
-function resetScenarios() {
-  scenarios = {
-    gasRampWsn2: false,
-    gasRampStartTime: 0,
-    fallWsn1: false,
-    fallStartTime: 0,
-    sosWsn3: false,
-    zoneEvac: false,
-    heatBuildWsn3: false,
-    heatStartTime: 0,
-    dhtFailWsn3: false,
-    dhtFailStartTime: 0,
-  };
-  killWsn3 = false;
+let running = false;
+let timers = [];
+let active = { id: 'idle', startedAt: 0 };
+let subscribers = new Set();
+
+const noise = (min, max) => min + Math.random() * (max - min);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+// Smoothed climate state so sparklines drift instead of jittering.
+let temp1 = 29.5;
+let hum1 = 64;
+let temp3 = 29.8;
+let hum3 = 68;
+
+const drift = (value, target, rate, jitter) =>
+  value + (target - value) * rate + noise(-jitter, jitter);
+
+export function onScenarioChange(fn) {
+  subscribers.add(fn);
+  return () => subscribers.delete(fn);
 }
 
-// Keyboard triggers
-window.addEventListener('keydown', (e) => {
-  if (!isMockRunning) return;
-  const key = e.key.toLowerCase();
-  const now = Date.now();
-  switch (key) {
-    case '1':
-      resetScenarios();
-      scenarios.gasRampWsn2 = true;
-      scenarios.gasRampStartTime = now;
-      break;
-    case '2':
-      resetScenarios();
-      scenarios.fallWsn1 = true;
-      scenarios.fallStartTime = now;
-      break;
-    case '3':
-      resetScenarios();
-      scenarios.sosWsn3 = true;
-      break;
-    case '4':
-      resetScenarios();
-      scenarios.zoneEvac = true;
-      break;
-    case '5':
-      resetScenarios();
-      scenarios.heatBuildWsn3 = true;
-      scenarios.heatStartTime = now;
-      break;
-    case '6':
-      resetScenarios();
-      scenarios.dhtFailWsn3 = true;
-      scenarios.dhtFailStartTime = now;
-      break;
-    case '0':
-      resetScenarios();
-      break;
-    case 'k':
-      killWsn3 = true;
-      break;
+export const getScenario = () => active.id;
+
+export function setScenario(id) {
+  const known = SCENARIOS.find((s) => s.id === id);
+  if (!known) return;
+  active = { id, startedAt: Date.now() };
+  if (id !== 'idle') {
+    addEvent(null, `Simulation: ${known.label}`, { level: 0, kind: 'Simulated' });
   }
-});
-
-// Helper for noise
-const noise = (min, max) => min + Math.random() * (max - min);
-
-// State for climate simulation
-let lastTempWsn1 = 30;
-let lastHumWsn1 = 65;
-let lastTempWsn3 = 29.8;
-let lastHumWsn3 = 68;
+  subscribers.forEach((fn) => fn(id));
+}
 
 export function startMockPublisher() {
-  if (isMockRunning) return;
-  isMockRunning = true;
+  if (running) return;
+  running = true;
 
-  setInterval(() => {
-    const now = Date.now();
-    
-    // WSN-1 Full Node
-    let gas1 = scenarios.zoneEvac ? 550 : noise(40, 90);
-    let alert1 = scenarios.zoneEvac ? 3 : 0;
-    let accel1 = noise(16000, 18000);
-    let fall1 = 0;
-    
-    if (scenarios.fallWsn1) {
-      const elapsed = now - scenarios.fallStartTime;
-      if (elapsed < 500) {
-        accel1 = 28500;
-        fall1 = 1;
-        alert1 = 3;
-      } else if (elapsed < 3500) {
-        accel1 = noise(16000, 18000);
-        fall1 = 1;
-        alert1 = 3;
+  // Fast loop: gas, motion and radio, at the cadence of the real firmware.
+  timers.push(
+    setInterval(() => {
+      const now = Date.now();
+      const elapsed = now - active.startedAt;
+      const evac = active.id === 'evac';
+
+      /* --- WSN-1: full sensor suite ------------------------------------ */
+      let gas1 = evac ? 550 : noise(40, 90);
+      let accel1 = noise(16100, 16800);
+      let fall1 = 0;
+
+      if (active.id === 'fall') {
+        if (elapsed < 600) {
+          accel1 = 28500;
+          fall1 = 1;
+        } else if (elapsed < 6000) {
+          accel1 = noise(16100, 16900);
+          fall1 = 1;
+        } else if (elapsed < 6500) {
+          fall1 = 0;
+          setScenario('idle');
+        }
       }
-    }
-    
-    updateNode('WSN-1', {
-      gas_ppm: gas1,
-      accel_mag: accel1,
-      fall: fall1,
-      sos: 0,
-      alert: alert1,
-      rssi: -62 + noise(-3, 3),
-      distance: 3.4,
-      hops: 1,
-      ts: performance.now()
-    });
 
-    // WSN-2 Gas Node
-    let gas2 = noise(40, 90);
-    let alert2 = 0;
-    
-    if (scenarios.gasRampWsn2 || scenarios.zoneEvac) {
-      const elapsed = now - scenarios.gasRampStartTime;
-      if (scenarios.zoneEvac) {
-        gas2 = 520;
-        alert2 = 3;
-      } else if (elapsed < 4000) {
-        gas2 = 60 + (360 * (elapsed / 4000));
-      } else if (elapsed < 12000) {
-        gas2 = 420;
-        alert2 = 2; // Warning
-      } else if (elapsed < 27000) {
-        gas2 = 420 - (360 * ((elapsed - 12000) / 15000));
-      }
-    }
-    
-    updateNode('WSN-2', {
-      gas_ppm: gas2,
-      sos: 0,
-      alert: alert2,
-      rssi: -67 + noise(-4, 4),
-      distance: 5.1,
-      hops: 1,
-      ts: performance.now()
-    });
-
-    // WSN-3 Climate Node
-    if (!killWsn3) {
-      let sos3 = scenarios.sosWsn3 ? 1 : 0;
-      updateNode('WSN-3', {
-        sos: sos3,
-        alert: sos3 ? 3 : 0,
-        rssi: -74 + noise(-5, 5),
-        distance: 8.7,
-        hops: 2,
-        ts: performance.now()
+      updateNode('WSN-1', {
+        gas_ppm: gas1,
+        accel_mag: accel1,
+        fall: fall1,
+        sos: 0,
+        rssi: -62 + noise(-3, 3),
+        distance: 3.4,
+        hops: 1,
       });
-      if (scenarios.sosWsn3) scenarios.sosWsn3 = false; // Reset after one tick
-    }
-    
-  }, 500);
 
-  // Climate updater (2s cadence)
-  setInterval(() => {
-    const now = Date.now();
-    
-    // WSN-1
-    lastTempWsn1 = noise(28, 32);
-    lastHumWsn1 = noise(60, 70);
-    updateNode('WSN-1', { temp: lastTempWsn1, humidity: lastHumWsn1 });
-    
-    // WSN-3
-    if (!killWsn3) {
-      if (scenarios.dhtFailWsn3) {
-        const elapsed = now - scenarios.dhtFailStartTime;
-        if (elapsed < 8000) {
+      /* --- WSN-2: gas-only node ---------------------------------------- */
+      let gas2 = noise(40, 90);
+      if (evac) {
+        gas2 = 520;
+      } else if (active.id === 'gas') {
+        if (elapsed < 4000) gas2 = 60 + 360 * (elapsed / 4000);
+        else if (elapsed < 12000) gas2 = 420;
+        else if (elapsed < 24000) gas2 = 420 - 360 * ((elapsed - 12000) / 12000);
+        else setScenario('idle');
+      }
+
+      updateNode('WSN-2', {
+        gas_ppm: gas2,
+        sos: 0,
+        rssi: -67 + noise(-4, 4),
+        distance: 5.1,
+        hops: 1,
+      });
+
+      /* --- WSN-3: climate node ----------------------------------------- */
+      if (active.id !== 'drop') {
+        const sos3 = active.id === 'sos' ? 1 : 0;
+        updateNode('WSN-3', {
+          sos: sos3,
+          rssi: -74 + noise(-5, 5),
+          distance: 8.7,
+          hops: 2,
+        });
+        if (sos3 && elapsed > 800) setScenario('idle');
+      }
+    }, 500)
+  );
+
+  // Slow loop: temperature and humidity move on a 2s cadence.
+  timers.push(
+    setInterval(() => {
+      const elapsed = Date.now() - active.startedAt;
+
+      temp1 = clamp(drift(temp1, 29.5, 0.2, 0.35), 26, 34);
+      hum1 = clamp(drift(hum1, 64, 0.2, 1), 55, 75);
+      updateNode('WSN-1', { temp: temp1, humidity: hum1 });
+
+      if (active.id === 'drop') return;
+
+      if (active.id === 'fault') {
+        if (elapsed < 9000) {
           updateNode('WSN-3', { temp: NaN, humidity: NaN });
           return;
-        } else {
-          scenarios.dhtFailWsn3 = false;
         }
+        setScenario('idle');
       }
-      
-      if (scenarios.heatBuildWsn3) {
-        const elapsed = now - scenarios.heatStartTime;
+
+      if (active.id === 'heat') {
         if (elapsed < 12000) {
-          lastTempWsn3 = 29 + (15 * (elapsed / 12000));
-          lastHumWsn3 = 68 + (20 * (elapsed / 12000));
-        } else if (elapsed < 20000) {
-          lastTempWsn3 = 44;
-          lastHumWsn3 = 88;
+          temp3 = 29 + 17 * (elapsed / 12000);
+          hum3 = 68 + 20 * (elapsed / 12000);
+        } else if (elapsed < 22000) {
+          temp3 = 46 + noise(-0.3, 0.3);
+          hum3 = 88;
         } else {
-          lastTempWsn3 = 29.8;
-          lastHumWsn3 = 68;
-          scenarios.heatBuildWsn3 = false;
+          setScenario('idle');
         }
+      } else if (active.id === 'evac') {
+        temp3 = 47;
+        hum3 = 90;
       } else {
-        lastTempWsn3 = noise(28, 32);
-        lastHumWsn3 = noise(60, 70);
+        temp3 = clamp(drift(temp3, 29.8, 0.2, 0.35), 26, 34);
+        hum3 = clamp(drift(hum3, 68, 0.2, 1), 58, 78);
       }
-      
-      updateNode('WSN-3', { temp: lastTempWsn3, humidity: lastHumWsn3 });
-    }
-  }, 2000);
+
+      updateNode('WSN-3', { temp: temp3, humidity: hum3 });
+    }, 2000)
+  );
 }
 
 export function stopMockPublisher() {
-  isMockRunning = false;
-  // Clear intervals ideally, but for demo it's fine
+  timers.forEach(clearInterval);
+  timers = [];
+  running = false;
+  active = { id: 'idle', startedAt: 0 };
 }
+
+export const isMockRunning = () => running;

@@ -1,91 +1,122 @@
 import React from 'react';
+import { toneFor } from '../state/severity';
 import './Gauge.css';
 
-export default function Gauge({ 
-  value, min, max, thresholds, 
-  unit, label, size = 100, 
-  stale, disabled 
+const STATUS = ['Normal', 'Caution', 'Warning', 'Emergency'];
+
+/**
+ * Semi-circular gauge with threshold ticks.
+ *
+ * The ticks matter: a colour alone says "you are fine", but the tick marks say
+ * *how much headroom is left* before caution, warning and emergency — which is
+ * the question an operator is actually asking.
+ */
+export default function Gauge({
+  value,
+  min = 0,
+  max = 100,
+  thresholds,
+  level = 0,
+  unit,
+  size = 108,
+  stale = false,
+  disabled = false,
+  peak = null,
 }) {
-  const isInvalid = disabled || value === null || value === undefined || Number.isNaN(value);
-  const safeValue = isInvalid ? min : Math.min(Math.max(value, min), max);
-  
-  // Calculate percentage for the semi-circle (0 to 1)
-  const range = max - min;
-  const percent = range > 0 ? (safeValue - min) / range : 0;
-  
-  // SVG arc calculation (semi-circle)
-  const strokeWidth = 8;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = Math.PI * radius; // Half circle
-  const strokeDashoffset = circumference - (percent * circumference);
-  
-  // Determine color based on thresholds
-  let color = 'var(--safe)';
-  let statusText = 'Normal';
-  
-  if (!isInvalid && thresholds) {
-    if (value >= thresholds.EMERGENCY) { color = 'var(--danger)'; statusText = 'Emergency'; }
-    else if (value >= thresholds.WARNING) { color = 'var(--warning)'; statusText = 'Warning'; }
-    else if (value >= thresholds.CAUTION) { color = 'var(--caution)'; statusText = 'Caution'; }
-  }
+  const invalid = disabled || value === null || value === undefined || Number.isNaN(value);
 
-  if (isInvalid) {
-    color = 'var(--border)';
-    statusText = '--';
-  }
+  const stroke = 9;
+  const w = size;
+  const h = size / 2 + stroke;
+  const r = (size - stroke) / 2;
+  const cx = size / 2;
+  const cy = h - stroke / 2;
+  const arcLen = Math.PI * r;
 
-  // Formatting value
-  const displayValue = isInvalid ? '--' : (Number.isInteger(value) ? value : value.toFixed(1));
-
-  // Determine icon/color for label
-  const getIconColor = (lbl) => {
-    switch(lbl.toLowerCase()) {
-      case 'gas': return 'var(--safe)';
-      case 'temperature': return 'var(--caution)';
-      case 'humidity': return 'var(--blue)';
-      case 'impact': return 'var(--text-secondary)';
-      default: return 'var(--text-secondary)';
-    }
+  const frac = (v) => {
+    if (max === min) return 0;
+    return Math.min(1, Math.max(0, (v - min) / (max - min)));
   };
-  const iconColor = getIconColor(label);
+
+  const pct = invalid ? 0 : frac(value);
+  const overRange = !invalid && value > max;
+  const tone = invalid ? 'offline' : toneFor(level);
+  const color = `var(--${tone === 'offline' ? 'text-3' : tone})`;
+
+  const arcPath = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`;
+
+  // Point on the arc for a given 0..1 fraction.
+  const pointAt = (f, radius) => {
+    const a = Math.PI - f * Math.PI;
+    return [cx + Math.cos(a) * radius, cy - Math.sin(a) * radius];
+  };
+
+  const ticks = [];
+  if (thresholds && !invalid) {
+    [
+      ['CAUTION', 'caution'],
+      ['WARNING', 'warning'],
+      ['EMERGENCY', 'danger'],
+    ].forEach(([key, toneName]) => {
+      const t = thresholds[key];
+      if (t === undefined || t === null || t > max) return;
+      const f = frac(t);
+      const [x1, y1] = pointAt(f, r - stroke / 2 - 1);
+      const [x2, y2] = pointAt(f, r + stroke / 2 + 1);
+      ticks.push(
+        <line
+          key={key}
+          x1={x1} y1={y1} x2={x2} y2={y2}
+          stroke={`var(--${toneName})`}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          opacity="0.55"
+        />
+      );
+    });
+  }
+
+  let peakMark = null;
+  if (peak && !invalid && peak.value > value) {
+    const f = frac(peak.value);
+    const [px, py] = pointAt(f, r);
+    peakMark = <circle cx={px} cy={py} r="2.75" fill={color} opacity="0.85" />;
+  }
+
+  const display = invalid
+    ? '--'
+    : Math.abs(value) >= 100
+      ? Math.round(value).toString()
+      : value.toFixed(Math.abs(value) < 10 ? 2 : 1).replace(/\.?0+$/, '') || '0';
 
   return (
-    <div className={`semi-gauge-container ${stale ? 'stale' : ''}`} style={{ width: size }}>
-      <div className="semi-gauge-header">
-        <span className="semi-gauge-icon" style={{ borderColor: iconColor }}></span>
-        <span className="semi-gauge-label">{label}</span>
+    <div className={`gauge ${stale ? 'is-stale' : ''} ${invalid ? 'is-off' : ''}`} style={{ width: w }}>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="presentation">
+        <path d={arcPath} fill="none" stroke="var(--surface-inset)" strokeWidth={stroke} strokeLinecap="round" />
+        <path
+          d={arcPath}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={arcLen}
+          strokeDashoffset={arcLen - pct * arcLen}
+          className="gauge-fill"
+        />
+        {ticks}
+        {peakMark}
+      </svg>
+
+      <div className="gauge-readout">
+        <span className="gauge-value tnum" style={{ color: invalid ? 'var(--text-3)' : 'var(--text)' }}>
+          {display}
+          {overRange && <span className="gauge-over">+</span>}
+        </span>
+        <span className="gauge-unit">{unit}</span>
       </div>
-      
-      <div className="semi-gauge-svg-wrap" style={{ height: size / 2 }}>
-        <svg width={size} height={size / 2} viewBox={`0 0 ${size} ${size / 2}`}>
-          {/* Background Arc */}
-          <path 
-            d={`M ${strokeWidth/2} ${size/2} A ${radius} ${radius} 0 0 1 ${size - strokeWidth/2} ${size/2}`}
-            fill="none"
-            stroke="var(--border)"
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-          />
-          {/* Progress Arc */}
-          <path 
-            d={`M ${strokeWidth/2} ${size/2} A ${radius} ${radius} 0 0 1 ${size - strokeWidth/2} ${size/2}`}
-            fill="none"
-            stroke={color}
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={strokeDashoffset}
-            style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-          />
-        </svg>
-        <div className="semi-gauge-value-wrap">
-          <div className="semi-gauge-value">{displayValue}</div>
-          <div className="semi-gauge-unit">{unit}</div>
-        </div>
-      </div>
-      
-      <div className="semi-gauge-status" style={{ color: !isInvalid && statusText === 'Normal' ? 'var(--safe)' : color }}>
-        {statusText}
+
+      <div className="gauge-status" style={{ color: invalid ? 'var(--text-3)' : color }}>
+        {invalid ? (disabled ? 'No sensor' : 'No data') : STATUS[level]}
       </div>
     </div>
   );

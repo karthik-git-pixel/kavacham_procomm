@@ -1,21 +1,17 @@
-.signal-bars {
-  display: flex;
+.bars {
+  display: inline-flex;
   align-items: flex-end;
   gap: 2px;
-  height: 14px;
-  width: 20px;
+  width: 16px;
+  flex: none;
 }
 
-.bar {
+.bars .bar {
   flex: 1;
-  background-color: var(--card-sunk);
+  min-height: 2px;
   border-radius: 1px;
+  background: var(--border-strong);
+  transition: background var(--t-fast);
 }
 
-.bar.filled {
-  background-color: var(--ink);
-}
-
-.signal-bars.disabled .bar {
-  background-color: var(--card-sunk);
-}
+.bars .bar.on { background: currentColor; }

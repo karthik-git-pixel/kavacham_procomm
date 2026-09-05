@@ -1,69 +1,55 @@
-.semi-gauge-container {
+.gauge {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  position: relative;
 }
 
-.semi-gauge-container.stale {
-  opacity: 0.6;
+.gauge-fill {
+  transition: stroke-dashoffset 500ms cubic-bezier(0.4, 0, 0.2, 1), stroke 300ms ease;
 }
 
-.semi-gauge-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  margin-bottom: 12px;
-}
-
-.semi-gauge-icon {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid;
-  background-color: transparent;
-}
-
-.semi-gauge-label {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.semi-gauge-svg-wrap {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  margin-bottom: 4px;
-}
-
-.semi-gauge-value-wrap {
+/* Readout sits inside the arc's opening. */
+.gauge-readout {
   position: absolute;
-  bottom: 0;
+  top: 44%;
   left: 0;
-  width: 100%;
+  right: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
+  line-height: 1;
+  pointer-events: none;
 }
 
-.semi-gauge-value {
-  font-size: 24px;
+.gauge-value {
+  font-size: var(--fs-2xl);
   font-weight: 700;
-  line-height: 1;
+  letter-spacing: -0.02em;
   color: var(--text);
 }
 
-.semi-gauge-unit {
-  font-size: 10px;
-  color: var(--text-secondary);
+.gauge-over {
+  font-size: var(--fs-sm);
+  vertical-align: super;
+  color: var(--danger);
+}
+
+.gauge-unit {
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+  color: var(--text-3);
+  margin-top: 3px;
+  text-transform: none;
+}
+
+.gauge-status {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   margin-top: 2px;
 }
 
-.semi-gauge-status {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: capitalize;
-  margin-top: 4px;
-}
+.gauge.is-stale { opacity: 0.55; }
+.gauge.is-off .gauge-value { font-weight: 600; }

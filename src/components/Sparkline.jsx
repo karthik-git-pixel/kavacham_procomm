@@ -1,35 +1,74 @@
-import React from 'react';
+import React, { useId } from 'react';
 import './Sparkline.css';
 
-export default function Sparkline({ data = [], width = 100, height = 30, color = 'var(--ink)', disabled = false, min = 0, max = 100, threshold = null }) {
-  if (disabled) {
+/**
+ * Compact trend line. A single number tells you where a sensor is; the
+ * sparkline tells you where it is heading, which is what turns a reading into
+ * a decision.
+ */
+export default function Sparkline({
+  data = [],
+  width = 120,
+  height = 28,
+  color = 'var(--info)',
+  min = 0,
+  max = 100,
+  disabled = false,
+  area = true,
+}) {
+  const gradientId = useId();
+  const clean = data.filter((v) => v !== null && v !== undefined && !Number.isNaN(v));
+
+  if (disabled || clean.length < 2) {
     return (
-      <svg width={width} height={height} className="sparkline disabled">
-        <line x1="0" y1={height} x2={width} y2={height} stroke="var(--rule)" strokeWidth="2" strokeDasharray="4 4" />
+      <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="spark spark-empty" aria-hidden="true">
+        <line x1="0" y1={height - 1} x2={width} y2={height - 1} stroke="var(--border)" strokeWidth="1.5" strokeDasharray="3 4" />
       </svg>
     );
   }
 
-  if (data.length === 0) {
-    return <svg width={width} height={height} className="sparkline empty" />;
-  }
+  // Framed on the data's own range rather than the full sensor scale, so a
+  // slow climb is actually visible. A floor on the span (a share of the full
+  // scale) stops sensor noise from being magnified into a dramatic swing.
+  const dataMin = Math.min(...clean);
+  const dataMax = Math.max(...clean);
+  const minSpan = (max - min) * minSpanRatio;
+  const mid = (dataMin + dataMax) / 2;
+  const half = Math.max((dataMax - dataMin) / 2, minSpan / 2);
+  const lo = mid - half;
+  const hi = mid + half;
 
-  // Normalize data points
-  const points = data.map((val, idx) => {
-    const x = (idx / (Math.max(29, data.length - 1))) * width;
-    const clamped = Math.max(min, Math.min(val, max));
-    const y = height - ((clamped - min) / (max - min)) * height;
-    return `${x},${y}`;
-  }).join(' ');
+  const span = hi - lo || 1;
+  const stepX = width / (clean.length - 1);
+  const yOf = (v) => height - 2 - ((Math.min(hi, Math.max(lo, v)) - lo) / span) * (height - 4);
 
-  const thresholdY = threshold !== null ? height - ((threshold - min) / (max - min)) * height : null;
+  const points = clean.map((v, i) => [i * stepX, yOf(v)]);
+  const line = points.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const fill = `${line} L${width},${height} L0,${height} Z`;
+  const [lastX, lastY] = points[points.length - 1];
 
   return (
-    <svg width={width} height={height} className="sparkline">
-      {threshold !== null && (
-        <line x1="0" y1={thresholdY} x2={width} y2={thresholdY} stroke="var(--danger)" strokeWidth="1" strokeDasharray="2 2" opacity="0.5" />
+    <svg
+      width="100%"
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      className="spark"
+      aria-hidden="true"
+    >
+      {area && (
+        <>
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+              <stop offset="100%" stopColor={color} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d={fill} fill={`url(#${gradientId})`} stroke="none" />
+        </>
       )}
-      <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={line} fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      <circle cx={lastX} cy={lastY} r="2" fill={color} />
     </svg>
   );
 }

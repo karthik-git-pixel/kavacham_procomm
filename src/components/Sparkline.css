@@ -1,7 +1,2 @@
-.sparkline {
-  display: block;
-}
-
-.sparkline.disabled {
-  opacity: 0.5;
-}
+.spark { display: block; width: 100%; overflow: visible; }
+.spark-empty { opacity: 0.7; }
