@@ -7,6 +7,7 @@ import EventTimeline from './components/EventTimeline';
 import ConnectionStrip from './components/ConnectionStrip';
 import SeverityBanner from './components/SeverityBanner';
 import './App.css'; // Might need to clear default styles if they conflict, but I'll use inline or just a simple dashboard class
+import helmetLogo from './assets/wowhelmet.png';
 
 function App() {
   const [mqttStatus, setMqttStatus] = useState('connecting');
@@ -33,32 +34,40 @@ function App() {
   // I will pass nodes to it just in case, or it might just call useNodes().
 
   return (
-    <div className="dashboard-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', backgroundColor: 'var(--bg)', color: 'var(--text)', overflow: 'hidden' }}>
-      
-      <ConnectionStrip status={mqttStatus} />
+    <>
+      {mqttStatus === 'connecting' && (
+        <div className="loading-screen">
+          <img src={helmetLogo} alt="KAVACHAM Logo" className="loading-logo" />
+          <div className="loading-title">KAVACHAM</div>
+        </div>
+      )}
+      <div className="dashboard-container">
+        
+        <ConnectionStrip status={mqttStatus} />
       {maxAlert > 0 && <SeverityBanner level={maxAlert} />}
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '16px', gap: '16px' }}>
+      <div className="dashboard-content">
         
         {/* Left Column: Worker Cards */}
-        <div style={{ flex: '0 0 350px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
+        <div className="left-column">
           <WorkerCard node={nodes['WSN-1']} />
           <WorkerCard node={nodes['WSN-2']} />
           <WorkerCard node={nodes['WSN-3']} />
         </div>
 
         {/* Center/Right Column: Map and Timeline */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px', overflow: 'hidden' }}>
-          <div style={{ flex: 2, minHeight: 0, border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+        <div className="right-column">
+          <div className="map-container">
             <ZoneMap />
           </div>
-          <div style={{ flex: 1, minHeight: 0, border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+          <div className="timeline-container">
             <EventTimeline events={events} />
           </div>
         </div>
 
       </div>
     </div>
+    </>
   );
 }
 
