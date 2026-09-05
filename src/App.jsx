@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { connectMQTT, disconnectMQTT } from './state/mqttClient';
 import { useNodeStore, useEventStore } from './state/nodeStore';
+import TopNav from './components/TopNav';
 import WorkerCard from './components/WorkerCard';
 import ZoneMap from './components/ZoneMap';
 import EventTimeline from './components/EventTimeline';
-import ConnectionStrip from './components/ConnectionStrip';
-import SeverityBanner from './components/SeverityBanner';
-import './App.css'; // Might need to clear default styles if they conflict, but I'll use inline or just a simple dashboard class
+import SystemSummary from './components/SystemSummary';
+import EnvironmentalOverview from './components/EnvironmentalOverview';
+import './App.css';
 import helmetLogo from './assets/wowhelmet.png';
 
 function App() {
@@ -43,26 +44,35 @@ function App() {
       )}
       <div className="dashboard-container">
         
-        <ConnectionStrip status={mqttStatus} />
-      {maxAlert > 0 && <SeverityBanner level={maxAlert} />}
+        <TopNav status={mqttStatus} />
 
       <div className="dashboard-content">
         
         {/* Left Column: Worker Cards */}
         <div className="left-column">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <h2 style={{ fontSize: '16px', margin: 0 }}>Workers (3) <span style={{ color: 'var(--safe)', fontSize: '12px' }}>● LIVE</span></h2>
+            <button style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px', color: 'var(--blue)' }}>+ Add Worker</button>
+          </div>
           <WorkerCard node={nodes['WSN-1']} />
           <WorkerCard node={nodes['WSN-2']} />
           <WorkerCard node={nodes['WSN-3']} />
         </div>
 
-        {/* Center/Right Column: Map and Timeline */}
-        <div className="right-column">
-          <div className="map-container">
+        {/* Center Column: Map and Timeline */}
+        <div className="center-column">
+          <div className="map-container glass-card" style={{ padding: 0 }}>
             <ZoneMap />
           </div>
-          <div className="timeline-container">
+          <div className="timeline-container glass-card">
             <EventTimeline events={events} />
           </div>
+        </div>
+
+        {/* Right Column: Summaries */}
+        <div className="right-column">
+          <SystemSummary nodes={nodes} />
+          <EnvironmentalOverview nodes={nodes} />
         </div>
 
       </div>

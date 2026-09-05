@@ -1,26 +1,123 @@
-.zone-map {
-  background-color: var(--card);
-  border: 1px solid var(--rule);
-  border-radius: 4px;
+.zone-map-container {
   display: flex;
-  justify-content: center;
-  align-items: center;
+  flex-direction: column;
   height: 100%;
 }
 
-@keyframes nodePulseAnim {
-  0% { transform: scale(0.8); opacity: 0.4; }
-  100% { transform: scale(1.5); opacity: 0; }
+.zone-map-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header-titles h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.header-titles p {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.view-toggle {
+  display: flex;
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.toggle-btn {
+  background: transparent;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.toggle-btn.active {
+  background-color: var(--card-bg);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.zone-map-content {
+  flex: 1;
+  position: relative;
+  background-color: #3b4252; /* Darker bg to contrast with glowing green nodes like the reference image */
+  overflow: hidden;
+  border-bottom-left-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+  background-image: radial-gradient(circle at 50% 50%, #4c566a 0%, #2e3440 100%);
 }
 
 .node-pulse {
-  transform-origin: center;
-  animation: nodePulseAnim 1.5s infinite ease-out;
+  animation: mapPulse 2s infinite ease-out;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .node-pulse {
-    animation: none;
-    display: none;
-  }
+@keyframes mapPulse {
+  0% { r: 6; opacity: 0.6; }
+  100% { r: 24; opacity: 0; }
+}
+
+.map-legend {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  background-color: rgba(46, 52, 64, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  backdrop-filter: blur(4px);
+  color: #d8dee9;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.legend-dot.active { background-color: var(--safe); }
+.legend-dot.inactive { background-color: var(--offline); }
+
+.legend-line {
+  width: 16px;
+  height: 2px;
+  background-color: var(--border);
 }

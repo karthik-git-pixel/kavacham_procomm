@@ -1,55 +1,69 @@
-.gauge-container {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.gauge-container.disabled svg {
-  filter: grayscale(100%);
-}
-
-.gauge-container.stale svg {
-  opacity: 0.4;
-}
-
-.gauge-readout {
-  position: absolute;
-  bottom: 20%;
-  text-align: center;
+.semi-gauge-container {
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative;
 }
 
-.readout-value {
-  font-family: var(--font-display);
-  font-size: 44px;
-  line-height: 1;
+.semi-gauge-container.stale {
+  opacity: 0.6;
 }
 
-.readout-value.compact {
-  font-size: 26px;
+.semi-gauge-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: 12px;
 }
 
-.readout-unit {
+.semi-gauge-icon {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid;
+  background-color: transparent;
+}
+
+.semi-gauge-label {
   font-size: 11px;
-  color: var(--ink-soft);
-  margin-top: 4px;
-  text-transform: lowercase;
+  color: var(--text-secondary);
 }
 
-.disabled .readout-unit {
-  text-transform: none; /* For "no gas sensor" */
+.semi-gauge-svg-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 4px;
 }
 
-.readout-state {
-  font-size: 12px;
+.semi-gauge-value-wrap {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.semi-gauge-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+}
+
+.semi-gauge-unit {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.semi-gauge-status {
+  font-size: 10px;
   font-weight: 600;
-  margin-top: 8px;
-  letter-spacing: 0.05em;
-}
-
-.stale-label {
-  font-style: italic;
+  text-transform: capitalize;
+  margin-top: 4px;
 }
