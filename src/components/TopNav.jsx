@@ -17,16 +17,16 @@ export default function TopNav({ status, uptime = "00:00:00" }) {
       
       <div className="topnav-center">
         <button className="nav-btn active">
-          <span className="nav-icon">~</span> Live Monitor
+          Live Monitor
         </button>
         <button className="nav-btn">
-          <span className="nav-icon">|</span> Analytics
+          Analytics
         </button>
         <button className="nav-btn">
-          <span className="nav-icon">@</span> Workers
+          Workers
         </button>
         <button className="nav-btn">
-          <span className="nav-icon">*</span> Settings
+          Settings
         </button>
       </div>
       
