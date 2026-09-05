@@ -1,0 +1,21 @@
+.signal-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+  width: 20px;
+}
+
+.bar {
+  flex: 1;
+  background-color: var(--card-sunk);
+  border-radius: 1px;
+}
+
+.bar.filled {
+  background-color: var(--ink);
+}
+
+.signal-bars.disabled .bar {
+  background-color: var(--card-sunk);
+}

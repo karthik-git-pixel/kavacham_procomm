@@ -1,0 +1,55 @@
+.gauge-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.gauge-container.disabled svg {
+  filter: grayscale(100%);
+}
+
+.gauge-container.stale svg {
+  opacity: 0.4;
+}
+
+.gauge-readout {
+  position: absolute;
+  bottom: 20%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.readout-value {
+  font-family: var(--font-display);
+  font-size: 44px;
+  line-height: 1;
+}
+
+.readout-value.compact {
+  font-size: 26px;
+}
+
+.readout-unit {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  text-transform: lowercase;
+}
+
+.disabled .readout-unit {
+  text-transform: none; /* For "no gas sensor" */
+}
+
+.readout-state {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 8px;
+  letter-spacing: 0.05em;
+}
+
+.stale-label {
+  font-style: italic;
+}

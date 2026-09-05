@@ -1,0 +1,7 @@
+.sparkline {
+  display: block;
+}
+
+.sparkline.disabled {
+  opacity: 0.5;
+}

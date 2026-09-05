@@ -1,0 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --panel:      #D7DADD;  /* painted steel, page background */
+  --card:       #F2F4F5;  /* instrument face */
+  --card-sunk:  #C6CACE;  /* recessed wells, gauge backing */
+  --ink:        #14181B;  /* primary text */
+  --ink-soft:   #5D666D;  /* labels, units */
+  --rule:       #A8AEB3;  /* hairlines, tick marks */
+  --safe:       #1F7A45;
+  --caution:    #C98A00;
+  --warning:    #DE6B1F;
+  --danger:     #C42B22;
+  --danger-hot: #FF3B2F;  /* pulse peak only */
+  
+  --font-base: 'IBM Plex Sans', sans-serif;
+  --font-display: 'IBM Plex Sans Condensed', sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--panel);
+  color: var(--ink);
+  font-family: var(--font-base);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}

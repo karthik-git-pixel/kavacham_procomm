@@ -1,0 +1,78 @@
+.event-timeline {
+  background-color: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.timeline-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.timeline-strip {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-bottom: 1px solid var(--rule);
+  background-color: var(--card-sunk);
+}
+
+.strip-track {
+  height: 24px;
+  position: relative;
+  background-color: rgba(255, 255, 255, 0.4);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.track-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding: 0 8px;
+  width: 40px;
+}
+
+.timeline-list {
+  padding: 12px 16px;
+  flex: 1;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.empty-events {
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+.event-item {
+  display: flex;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.event-item:last-child {
+  border-bottom: none;
+}
+
+.event-time {
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-node {
+  font-weight: 600;
+}
+
+.event-desc {
+  flex: 1;
+}
