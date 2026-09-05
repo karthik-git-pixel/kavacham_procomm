@@ -25,6 +25,10 @@
 #define GAS_THRESHOLD   800
 #define TEMP_THRESHOLD  70.0
 
+// Gas sensor physical-disconnect detection
+#define GAS_DISCONNECTED_LOW   50
+#define GAS_DISCONNECTED_HIGH  4090
+
 // ---------------- MPU6500 ----------------
 #define MPU_ADDR 0x68
 
@@ -44,6 +48,9 @@
 #define SOS_INTERVAL_MS      500
 #define MANUAL_BURST_MS      700
 
+// NEW: SOS cooldown
+#define SOS_COOLDOWN_MS     3000
+
 // =====================================================
 // GLOBAL VARIABLES
 // =====================================================
@@ -55,11 +62,17 @@ bool gasUnsafe = false;
 bool tempUnsafe = false;
 bool fallUnsafe = false;
 
+bool gasSensorDisconnected = false;
+
 bool automaticSOS = false;
 
 bool acknowledgedCurrentEmergency = false;
 
 bool previousCriticalState = false;
+
+// NEW: cooldown state
+bool sosCooldown = false;
+unsigned long sosCooldownStart = 0;
 
 // Button state
 bool buttonWasPressed = false;
@@ -143,49 +156,77 @@ void readMPU6500(
 }
 
 // =====================================================
-// FAST FALL DETECTION
+// FALL DETECTION
 // =====================================================
 
 bool detectFall() {
+
   float ax, ay, az;
   float gx, gy, gz;
 
-  readMPU6500(ax, ay, az, gx, gy, gz);
+  readMPU6500(
+    ax, ay, az,
+    gx, gy, gz
+  );
 
   float acceleration =
-      sqrt(ax * ax + ay * ay + az * az);
+      sqrt(
+        ax * ax +
+        ay * ay +
+        az * az
+      );
 
   float rotation =
-      sqrt(gx * gx + gy * gy + gz * gz);
+      sqrt(
+        gx * gx +
+        gy * gy +
+        gz * gz
+      );
 
   unsigned long now = millis();
 
-  if (acceleration < FREE_FALL_THRESHOLD) {
+  if (
+    acceleration <
+    FREE_FALL_THRESHOLD
+  ) {
+
     freeFallDetected = true;
     fallFreeFallTime = now;
   }
 
   if (freeFallDetected) {
 
-    if (now - fallFreeFallTime <= FALL_WINDOW_MS) {
+    if (
+      now - fallFreeFallTime <=
+      FALL_WINDOW_MS
+    ) {
 
       if (
-        acceleration > IMPACT_THRESHOLD ||
-        rotation > GYRO_THRESHOLD
+        acceleration >
+          IMPACT_THRESHOLD ||
+        rotation >
+          GYRO_THRESHOLD
       ) {
 
-        if (now - lastFallTime > FALL_COOLDOWN_MS) {
+        if (
+          now - lastFallTime >
+          FALL_COOLDOWN_MS
+        ) {
 
           lastFallTime = now;
+
           freeFallDetected = false;
 
-          Serial.println("!!! FALL DETECTED !!!");
+          Serial.println(
+            "!!! FALL DETECTED !!!"
+          );
 
           return true;
         }
       }
 
     } else {
+
       freeFallDetected = false;
     }
   }
@@ -213,45 +254,105 @@ void updateFallDetection() {
 // =====================================================
 
 bool readDHT11(float &temp) {
-  uint8_t data[5] = {0, 0, 0, 0, 0};
 
-  pinMode(DHT_PIN, OUTPUT);
-  digitalWrite(DHT_PIN, LOW);
+  uint8_t data[5] =
+    {0, 0, 0, 0, 0};
+
+  pinMode(
+    DHT_PIN,
+    OUTPUT
+  );
+
+  digitalWrite(
+    DHT_PIN,
+    LOW
+  );
+
   delay(20);
-  digitalWrite(DHT_PIN, HIGH);
+
+  digitalWrite(
+    DHT_PIN,
+    HIGH
+  );
+
   delayMicroseconds(30);
-  pinMode(DHT_PIN, INPUT_PULLUP);
 
-  unsigned long timeout = micros();
+  pinMode(
+    DHT_PIN,
+    INPUT_PULLUP
+  );
 
-  while (digitalRead(DHT_PIN) == HIGH) {
-    if (micros() - timeout > 100) return false;
+  unsigned long timeout =
+      micros();
+
+  while (
+    digitalRead(DHT_PIN) == HIGH
+  ) {
+
+    if (
+      micros() - timeout >
+      100
+    )
+      return false;
   }
 
   timeout = micros();
 
-  while (digitalRead(DHT_PIN) == LOW) {
-    if (micros() - timeout > 100) return false;
+  while (
+    digitalRead(DHT_PIN) == LOW
+  ) {
+
+    if (
+      micros() - timeout >
+      100
+    )
+      return false;
   }
 
   timeout = micros();
 
-  while (digitalRead(DHT_PIN) == HIGH) {
-    if (micros() - timeout > 100) return false;
+  while (
+    digitalRead(DHT_PIN) == HIGH
+  ) {
+
+    if (
+      micros() - timeout >
+      100
+    )
+      return false;
   }
 
-  for (int i = 0; i < 40; i++) {
+  for (
+    int i = 0;
+    i < 40;
+    i++
+  ) {
 
     timeout = micros();
 
-    while (digitalRead(DHT_PIN) == LOW) {
-      if (micros() - timeout > 100) return false;
+    while (
+      digitalRead(DHT_PIN) == LOW
+    ) {
+
+      if (
+        micros() - timeout >
+        100
+      )
+        return false;
     }
 
-    unsigned long highStart = micros();
+    unsigned long highStart =
+        micros();
 
-    while (digitalRead(DHT_PIN) == HIGH) {
-      if (micros() - highStart > 100) break;
+    while (
+      digitalRead(DHT_PIN) == HIGH
+    ) {
+
+      if (
+        micros() - highStart >
+        100
+      )
+        break;
     }
 
     unsigned long duration =
@@ -266,9 +367,16 @@ bool readDHT11(float &temp) {
 
   if (
     data[4] !=
-    ((data[0] + data[1] +
-      data[2] + data[3]) & 0xFF)
+    (
+      (
+        data[0] +
+        data[1] +
+        data[2] +
+        data[3]
+      ) & 0xFF
+    )
   ) {
+
     return false;
   }
 
@@ -283,56 +391,170 @@ bool readDHT11(float &temp) {
 
 void checkSafety() {
 
-  gasValue = analogRead(MQ6_AO);
+  gasValue =
+      analogRead(MQ6_AO);
 
-  gasUnsafe =
-      gasValue > GAS_THRESHOLD;
+  // ---------------------------------------------
+  // Detect whether MQ-6 appears physically absent
+  // ---------------------------------------------
+
+  if (
+    gasValue <=
+      GAS_DISCONNECTED_LOW ||
+    gasValue >=
+      GAS_DISCONNECTED_HIGH
+  ) {
+
+    gasSensorDisconnected = true;
+
+  } else {
+
+    gasSensorDisconnected = false;
+  }
+
+  // ---------------------------------------------
+  // Gas logic
+  // ---------------------------------------------
+
+  if (gasSensorDisconnected) {
+
+    // Sensor physically removed
+    // = GAS DETECTED
+
+    gasUnsafe = true;
+
+  } else {
+
+    // Sensor physically present
+    // = normal threshold
+
+    gasUnsafe =
+        gasValue >
+        GAS_THRESHOLD;
+  }
+
+  // ---------------------------------------------
+  // Temperature
+  // ---------------------------------------------
 
   float newTemperature;
 
-  if (readDHT11(newTemperature)) {
-    temperature = newTemperature;
+  if (
+    readDHT11(newTemperature)
+  ) {
+
+    temperature =
+        newTemperature;
   }
 
   tempUnsafe =
-      temperature > TEMP_THRESHOLD;
+      temperature >
+      TEMP_THRESHOLD;
+
+  // ---------------------------------------------
+  // Serial output
+  // ---------------------------------------------
 
   Serial.println();
-  Serial.println("========== NODE 1 ==========");
 
-  Serial.print("Gas       : ");
-  Serial.print(gasValue);
-  Serial.print(" / ");
-  Serial.println(GAS_THRESHOLD);
-
-  Serial.print("Temperature: ");
-  Serial.print(temperature);
-  Serial.println(" C");
-
-  Serial.print("Gas Status : ");
   Serial.println(
-    gasUnsafe ? "UNSAFE" : "SAFE"
+    "========== NODE 1 =========="
   );
 
-  Serial.print("Temp Status: ");
-  Serial.println(
-    tempUnsafe ? "UNSAFE" : "SAFE"
+  Serial.print(
+    "Gas       : "
   );
 
-  Serial.print("Fall Status: ");
-  Serial.println(
-    fallUnsafe ? "DETECTED" : "SAFE"
+  Serial.print(
+    gasValue
   );
 
-  Serial.print("SOS Status : ");
+  Serial.print(
+    " / "
+  );
+
+  Serial.println(
+    GAS_THRESHOLD
+  );
+
+  Serial.print(
+    "Gas Sensor: "
+  );
+
+  Serial.println(
+    gasSensorDisconnected ?
+    "PHYSICALLY REMOVED" :
+    "CONNECTED"
+  );
+
+  Serial.print(
+    "Gas Status : "
+  );
+
+  Serial.println(
+    gasUnsafe ?
+    "UNSAFE" :
+    "SAFE"
+  );
+
+  Serial.print(
+    "Temperature: "
+  );
+
+  Serial.print(
+    temperature
+  );
+
+  Serial.println(
+    " C"
+  );
+
+  Serial.print(
+    "Temp Status: "
+  );
+
+  Serial.println(
+    tempUnsafe ?
+    "UNSAFE" :
+    "SAFE"
+  );
+
+  Serial.print(
+    "Fall Status: "
+  );
+
+  Serial.println(
+    fallUnsafe ?
+    "DETECTED" :
+    "SAFE"
+  );
+
+  Serial.print(
+    "SOS Status : "
+  );
 
   if (automaticSOS) {
-    Serial.println("AUTOMATIC SOS");
+
+    Serial.println(
+      "AUTOMATIC SOS"
+    );
+
+  } else if (sosCooldown) {
+
+    Serial.println(
+      "COOLDOWN"
+    );
+
   } else {
-    Serial.println("SAFE");
+
+    Serial.println(
+      "SAFE"
+    );
   }
 
-  Serial.println("============================");
+  Serial.println(
+    "============================"
+  );
 }
 
 // =====================================================
@@ -340,6 +562,7 @@ void checkSafety() {
 // =====================================================
 
 bool criticalCondition() {
+
   return (
     gasUnsafe ||
     tempUnsafe ||
@@ -367,7 +590,9 @@ uint8_t createStatusByte() {
 // BLE
 // =====================================================
 
-void advertisePacket(uint8_t status) {
+void advertisePacket(
+  uint8_t status
+) {
 
   uint8_t packet[7];
 
@@ -376,7 +601,8 @@ void advertisePacket(uint8_t status) {
   packet[2] = status;
   packet[3] = sequenceNumber++;
   packet[4] = gasValue;
-  packet[5] = (uint8_t)temperature;
+  packet[5] =
+      (uint8_t)temperature;
   packet[6] = NODE_TYPE;
 
   std::string data(
@@ -390,8 +616,14 @@ void advertisePacket(uint8_t status) {
   NimBLEAdvertisementData advertisement;
 
   advertisement.setFlags(0x06);
-  advertisement.setName("KAVACHAM");
-  advertisement.setManufacturerData(data);
+
+  advertisement.setName(
+    "KAVACHAM"
+  );
+
+  advertisement.setManufacturerData(
+    data
+  );
 
   advertising->setAdvertisementData(
     advertisement
@@ -409,7 +641,9 @@ void transmitEmergencyPacket() {
   uint8_t status =
       createStatusByte();
 
-  advertisePacket(status);
+  advertisePacket(
+    status
+  );
 
   Serial.println(
     "BLE -> AUTOMATIC EMERGENCY"
@@ -426,20 +660,121 @@ void startAutomaticSOS() {
   );
 
   Serial.println();
+
   Serial.println(
     "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
   );
+
   Serial.println(
     "     AUTOMATIC SOS STARTED"
   );
+
   Serial.println(
     "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
   );
 
   transmitEmergencyPacket();
 
-  lastSOSTransmit = millis();
+  lastSOSTransmit =
+      millis();
 }
+
+// =====================================================
+// SOS COOLDOWN
+// =====================================================
+
+void startSOSCooldown() {
+
+  sosCooldown = true;
+
+  sosCooldownStart =
+      millis();
+
+  // Stop everything
+  automaticSOS = false;
+
+  digitalWrite(
+    BUZZER_PIN,
+    LOW
+  );
+
+  advertising->stop();
+
+  // Reset emergency states
+  gasUnsafe = false;
+  tempUnsafe = false;
+  fallUnsafe = false;
+
+  acknowledgedCurrentEmergency =
+      false;
+
+  previousCriticalState =
+      false;
+
+  Serial.println();
+
+  Serial.println(
+    "================================"
+  );
+
+  Serial.println(
+    "       SOS COOLDOWN"
+  );
+
+  Serial.println(
+    "       3 SECONDS"
+  );
+
+  Serial.println(
+    "================================"
+  );
+}
+
+void updateSOSCooldown() {
+
+  if (!sosCooldown)
+    return;
+
+  if (
+    millis() - sosCooldownStart >=
+    SOS_COOLDOWN_MS
+  ) {
+
+    sosCooldown = false;
+
+    gasUnsafe = false;
+    tempUnsafe = false;
+    fallUnsafe = false;
+
+    acknowledgedCurrentEmergency =
+        false;
+
+    previousCriticalState =
+        false;
+
+    Serial.println();
+
+    Serial.println(
+      "================================"
+    );
+
+    Serial.println(
+      "      SYSTEM READY AGAIN"
+    );
+
+    Serial.println(
+      "    READY FOR FRESH SOS"
+    );
+
+    Serial.println(
+      "================================"
+    );
+  }
+}
+
+// =====================================================
+// STOP AUTOMATIC SOS
+// =====================================================
 
 void stopAutomaticSOS() {
 
@@ -453,21 +788,29 @@ void stopAutomaticSOS() {
   advertising->stop();
 
   Serial.println();
+
   Serial.println(
     "********************************"
   );
+
   Serial.println(
     "AUTOMATIC SOS ACKNOWLEDGED"
   );
+
   Serial.println(
     "BLE STOPPED"
   );
+
   Serial.println(
     "BUZZER OFF"
   );
+
   Serial.println(
     "********************************"
   );
+
+  // Start 3-second cooldown
+  startSOSCooldown();
 }
 
 // =====================================================
@@ -476,20 +819,27 @@ void stopAutomaticSOS() {
 
 void transmitManualSOS() {
 
-  uint8_t status = 0x08;
+  uint8_t status =
+      0x08;
 
-  advertisePacket(status);
+  advertisePacket(
+    status
+  );
 
   manualTransmitUntil =
-      millis() + MANUAL_BURST_MS;
+      millis() +
+      MANUAL_BURST_MS;
 
   Serial.println();
+
   Serial.println(
     "================================"
   );
+
   Serial.println(
     "       MANUAL SOS TRIGGERED"
   );
+
   Serial.println(
     "================================"
   );
@@ -502,7 +852,11 @@ void transmitManualSOS() {
 void handleButton() {
 
   bool pressed =
-      (digitalRead(BUTTON_PIN) == LOW);
+      (
+        digitalRead(
+          BUTTON_PIN
+        ) == LOW
+      );
 
   if (
     pressed &&
@@ -528,25 +882,25 @@ void handleButton() {
     );
 
     // ---------------------------------------------
-    // Acknowledge automatic SOS
+    // Automatic SOS acknowledgement
     // ---------------------------------------------
 
     if (automaticSOS) {
 
       stopAutomaticSOS();
 
-      if (criticalCondition()) {
+      return;
+    }
 
-        acknowledgedCurrentEmergency = true;
+    // ---------------------------------------------
+    // Ignore during cooldown
+    // ---------------------------------------------
 
-        Serial.println(
-          "Current emergency acknowledged."
-        );
+    if (sosCooldown) {
 
-        Serial.println(
-          "SOS will NOT restart until condition clears."
-        );
-      }
+      Serial.println(
+        "Button ignored: SOS cooldown active."
+      );
 
       return;
     }
@@ -574,7 +928,9 @@ void handleButton() {
 
 void setup() {
 
-  Serial.begin(115200);
+  Serial.begin(
+    115200
+  );
 
   delay(1000);
 
@@ -642,6 +998,10 @@ void setup() {
     "Temperature threshold: 70 C"
   );
 
+  Serial.println(
+    "SOS cooldown: 3 seconds"
+  );
+
   Serial.println();
 
   Serial.println(
@@ -655,14 +1015,14 @@ void setup() {
 
 void loop() {
 
-  // Button is checked continuously
+  // Button
   handleButton();
 
-  // ---------------------------------------------
-  // FAST IMU / FALL DETECTION
-  // ---------------------------------------------
-
+  // Fast IMU
   updateFallDetection();
+
+  // SOS cooldown
+  updateSOSCooldown();
 
   // ---------------------------------------------
   // Stop manual SOS burst
@@ -670,7 +1030,8 @@ void loop() {
 
   if (
     manualTransmitUntil != 0 &&
-    millis() >= manualTransmitUntil
+    millis() >=
+      manualTransmitUntil
   ) {
 
     advertising->stop();
@@ -683,7 +1044,7 @@ void loop() {
   }
 
   // ---------------------------------------------
-  // GAS + TEMPERATURE
+  // Gas + temperature
   // ---------------------------------------------
 
   if (
@@ -693,41 +1054,36 @@ void loop() {
 
     lastSensorRead = millis();
 
-    checkSafety();
+    // Do not generate a new emergency
+    // during cooldown.
+    if (!sosCooldown) {
 
-    bool criticalNow =
-        criticalCondition();
+      checkSafety();
 
-    // -------------------------------------------
-    // Emergency condition cleared
-    // -------------------------------------------
+      bool criticalNow =
+          criticalCondition();
 
-    if (!criticalNow) {
+      // -------------------------------------------
+      // SAFE -> UNSAFE
+      // -------------------------------------------
 
-      acknowledgedCurrentEmergency =
-          false;
+      if (
+        criticalNow &&
+        !previousCriticalState &&
+        !acknowledgedCurrentEmergency &&
+        !automaticSOS
+      ) {
+
+        startAutomaticSOS();
+      }
+
+      previousCriticalState =
+          criticalNow;
     }
-
-    // -------------------------------------------
-    // SAFE -> UNSAFE transition
-    // -------------------------------------------
-
-    if (
-      criticalNow &&
-      !previousCriticalState &&
-      !acknowledgedCurrentEmergency &&
-      !automaticSOS
-    ) {
-
-      startAutomaticSOS();
-    }
-
-    previousCriticalState =
-        criticalNow;
   }
 
   // ---------------------------------------------
-  // CONTINUOUS AUTOMATIC SOS
+  // Continuous automatic SOS
   // ---------------------------------------------
 
   if (automaticSOS) {
@@ -751,3 +1107,4 @@ void loop() {
 
   delay(5);
 }
+
