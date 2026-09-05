@@ -215,12 +215,12 @@ export default function ZoneMap({ nodes, selectedId, onSelect, now }) {
               const dx = pos.labelAt === 'left' ? -14 : pos.labelAt === 'right' ? 14 : 0;
               const dy = pos.labelAt === 'below' ? 30 : -18;
               const anchor = pos.labelAt === 'left' ? 'end' : pos.labelAt === 'right' ? 'start' : 'middle';
-              const w = node.zone.length * 6.1 + 16;
+              const w = id.length * 6.1 + 16;
               const x = anchor === 'end' ? pos.x + dx - w : anchor === 'start' ? pos.x + dx : pos.x - w / 2;
               return (
                 <g key={`lbl${id}`} className="zmap-plate" pointerEvents="none">
                   <rect x={x} y={pos.y + dy - 11} width={w} height="19" rx="9.5" />
-                  <text x={x + w / 2} y={pos.y + dy + 2} textAnchor="middle">{node.zone}</text>
+                  <text x={x + w / 2} y={pos.y + dy + 2} textAnchor="middle">{id}</text>
                 </g>
               );
             })}
