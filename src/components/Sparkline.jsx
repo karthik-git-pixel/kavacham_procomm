@@ -30,6 +30,9 @@ export default function Sparkline({
   // Framed on the data's own range rather than the full sensor scale, so a
   // slow climb is actually visible. A floor on the span (a share of the full
   // scale) stops sensor noise from being magnified into a dramatic swing.
+  // 10 % of the full scale is the minimum visible span — prevents noise from
+  // being magnified into a dramatic swing on a nearly-flat signal.
+  const minSpanRatio = 0.1;
   const dataMin = Math.min(...clean);
   const dataMax = Math.max(...clean);
   const minSpan = (max - min) * minSpanRatio;
