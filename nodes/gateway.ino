@@ -1,626 +1,806 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <NimBLEDevice.h>
+#include <string.h>
+#include <string>
 
 // =====================================================
-// KAVACHAM GATEWAY
-// NODE 1 -> NODE 2 -> GATEWAY -> MQTT
+// WIFI / MQTT
 // =====================================================
-
-// ---------------- WIFI ----------------
 
 const char* WIFI_SSID = "Karthik";
 const char* WIFI_PASSWORD = "12345678";
 
-// ---------------- MQTT ----------------
-
 const char* MQTT_BROKER = "192.168.146.22";
 const int MQTT_PORT = 1883;
-
 const char* MQTT_TOPIC = "mine/test";
 
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);
-
-NimBLEScan* bleScan;
-
-
 // =====================================================
-// KAVACHAM PACKET
-// =====================================================
-//
-// Byte 0 = Protocol       0xCA
-// Byte 1 = Source Node ID
-// Byte 2 = Status
-//          bit 0 = GAS UNSAFE
-//          bit 1 = TEMP UNSAFE
-//          bit 2 = FALL
-//          bit 3 = MANUAL SOS
-// Byte 3 = Sequence
-// Byte 4 = Gas
-// Byte 5 = Temperature
-// Byte 6 = Node Type
-//
+// PACKET DEFINITIONS
 // =====================================================
 
 #define PACKET_SIZE 7
 #define KAVACHAM_PROTOCOL 0xCA
 
+#define GAS_UNSAFE_BIT   0x01
+#define TEMP_UNSAFE_BIT  0x02
+#define FALL_UNSAFE_BIT  0x04
+#define MANUAL_SOS_BIT   0x08
 
 // =====================================================
-// STATUS BITS
+// OBJECTS
 // =====================================================
 
-#define GAS_UNSAFE_BIT       0x01
-#define TEMP_UNSAFE_BIT      0x02
-#define FALL_UNSAFE_BIT      0x04
-#define MANUAL_SOS_BIT       0x08
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
 
-
-// =====================================================
-// MESSAGE TYPES
-// =====================================================
-
-const char* getMessageType(uint8_t status)
-{
-  bool gas    = status & GAS_UNSAFE_BIT;
-  bool temp   = status & TEMP_UNSAFE_BIT;
-  bool fall   = status & FALL_UNSAFE_BIT;
-  bool manual = status & MANUAL_SOS_BIT;
-
-  if (manual)
-    return "MANUAL_SOS";
-
-  if (fall)
-    return "CRITICAL_FALL";
-
-  if (gas)
-    return "GAS_THRESHOLD_EXCEEDED";
-
-  if (temp)
-    return "TEMPERATURE_EXCEEDED";
-
-  return "TELEMETRY";
-}
-
+NimBLEScan* bleScan = nullptr;
 
 // =====================================================
-// WIFI
+// PENDING BLE PACKET
 // =====================================================
 
-void connectWiFi()
-{
-  Serial.println();
-  Serial.println("================================");
-  Serial.println("        WIFI DEBUG START");
-  Serial.println("================================");
+uint8_t pendingPacket[PACKET_SIZE];
 
-  Serial.print("SSID: ");
-  Serial.println(WIFI_SSID);
+volatile bool packetPending = false;
 
-  Serial.print("Password length: ");
-  Serial.println(strlen(WIFI_PASSWORD));
+int pendingRSSI = 0;
 
-  // Set WiFi mode
-  WiFi.mode(WIFI_STA);
-
-  Serial.println("WiFi mode set to STA");
-
-  // Disconnect previous connection
-  WiFi.disconnect(true);
-  delay(1000);
-
-  Serial.println("Previous WiFi connection cleared");
-
-  // Start connection
-  Serial.println();
-  Serial.println("Attempting WiFi connection...");
-
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  int attempts = 0;
-
-  while (WiFi.status() != WL_CONNECTED && attempts < 40)
-  {
-    delay(500);
-
-    Serial.print("Attempt ");
-    Serial.print(attempts + 1);
-    Serial.print(" | Status = ");
-    Serial.println(WiFi.status());
-
-    attempts++;
-  }
-
-  Serial.println();
-
-  // Check result
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    Serial.println("================================");
-    Serial.println("       WIFI CONNECTED!");
-    Serial.println("================================");
-
-    Serial.print("SSID       : ");
-    Serial.println(WiFi.SSID());
-
-    Serial.print("IP Address : ");
-    Serial.println(WiFi.localIP());
-
-    Serial.print("Gateway    : ");
-    Serial.println(WiFi.gatewayIP());
-
-    Serial.print("Subnet     : ");
-    Serial.println(WiFi.subnetMask());
-
-    Serial.print("RSSI       : ");
-    Serial.print(WiFi.RSSI());
-    Serial.println(" dBm");
-
-    Serial.println("================================");
-  }
-  else
-  {
-    Serial.println("================================");
-    Serial.println("     WIFI CONNECTION FAILED");
-    Serial.println("================================");
-
-    Serial.print("Final status = ");
-    Serial.println(WiFi.status());
-
-    Serial.println();
-    Serial.println("Possible reasons:");
-    Serial.println("1. Hotspot is using 5 GHz");
-    Serial.println("2. Wrong SSID");
-    Serial.println("3. Wrong password");
-    Serial.println("4. Hotspot is not active");
-    Serial.println("5. ESP32 is too far from hotspot");
-    Serial.println("================================");
-  }
-}
+char pendingAddress[40] = {0};
 
 // =====================================================
-// MQTT
+// DUPLICATE PACKET TRACKING
 // =====================================================
 
-void connectMQTT()
-{
-  while (!mqttClient.connected())
-  {
-    Serial.print("Connecting to MQTT... ");
-
-    String clientID =
-      "KAVACHAM-GATEWAY-" +
-      String(
-        (uint32_t)ESP.getEfuseMac(),
-        HEX
-      );
-
-    if (mqttClient.connect(clientID.c_str()))
-    {
-      Serial.println("CONNECTED");
-
-      mqttClient.publish(
-        MQTT_TOPIC,
-        "{\"gateway\":\"KAVACHAM_GATEWAY\",\"status\":\"online\"}"
-      );
-    }
-    else
-    {
-      Serial.print("FAILED, state = ");
-      Serial.println(mqttClient.state());
-
-      delay(2000);
-    }
-  }
-}
-
-
-// =====================================================
-// LAST PACKET
-// Prevent processing exact duplicate packets
-// =====================================================
-
-uint8_t lastSource = 255;
+uint8_t lastSource = 0;
 uint8_t lastSequence = 255;
 
+bool haveLastPacket = false;
+
+// =====================================================
+// MQTT RECONNECT TIMING
+// =====================================================
+
+unsigned long lastMQTTAttempt = 0;
+
+#define MQTT_RECONNECT_INTERVAL 3000
 
 // =====================================================
 // BLE CALLBACK
 // =====================================================
 
-class ScanCallbacks : public NimBLEScanCallbacks
-{
-  void onResult(
-    const NimBLEAdvertisedDevice* device
-  ) override
-  {
+class ScanCallbacks : public NimBLEScanCallbacks {
 
-    // -------------------------------------------------
+  void onResult(const NimBLEAdvertisedDevice* device) override {
+
     // Check device name
-    // -------------------------------------------------
-
-    if (!device->haveName())
+    if (!device->haveName()) {
       return;
+    }
 
-    String name =
-      device->getName().c_str();
+    std::string name = device->getName();
 
-    if (name != "KAVACHAM")
+    if (name != "KAVACHAM") {
       return;
+    }
 
-
-    // -------------------------------------------------
     // Check manufacturer data
-    // -------------------------------------------------
-
-    if (!device->haveManufacturerData())
+    if (!device->haveManufacturerData()) {
       return;
+    }
 
-    std::string data =
-      device->getManufacturerData();
+    std::string manufacturerData = device->getManufacturerData();
 
-
-    // -------------------------------------------------
-    // Must be exactly 7 bytes
-    // -------------------------------------------------
-
-    if (data.length() != PACKET_SIZE)
+    if (manufacturerData.length() != PACKET_SIZE) {
       return;
+    }
 
+    const uint8_t* rx =
+      (const uint8_t*)manufacturerData.data();
 
-    uint8_t packet[PACKET_SIZE];
+    // Check protocol
+    if (rx[0] != KAVACHAM_PROTOCOL) {
+      return;
+    }
 
-    memcpy(
-      packet,
-      data.data(),
-      PACKET_SIZE
+    uint8_t source = rx[1];
+    uint8_t sequence = rx[3];
+
+    // Ignore exact duplicate
+    if (haveLastPacket &&
+        source == lastSource &&
+        sequence == lastSequence) {
+
+      return;
+    }
+
+    // Do not overwrite pending packet
+    if (packetPending) {
+      return;
+    }
+
+    // Copy packet
+    memcpy(pendingPacket, rx, PACKET_SIZE);
+
+    pendingRSSI = device->getRSSI();
+
+    std::string address =
+      device->getAddress().toString();
+
+    strncpy(
+      pendingAddress,
+      address.c_str(),
+      sizeof(pendingAddress) - 1
     );
 
+    pendingAddress[sizeof(pendingAddress) - 1] = '\0';
 
-    // -------------------------------------------------
-    // Check protocol byte
-    // -------------------------------------------------
-
-    if (packet[0] != KAVACHAM_PROTOCOL)
-      return;
-
-
-    // -------------------------------------------------
-    // Decode
-    // -------------------------------------------------
-
-    uint8_t sourceNode = packet[1];
-    uint8_t status     = packet[2];
-    uint8_t sequence   = packet[3];
-
-    uint8_t gas =
-      packet[4];
-
-    uint8_t temperature =
-      packet[5];
-
-    uint8_t nodeType =
-      packet[6];
-
-
-    // -------------------------------------------------
-    // Ignore exact duplicate
-    // -------------------------------------------------
-
-    if (
-      sourceNode == lastSource &&
-      sequence == lastSequence
-    )
-    {
-      return;
-    }
-
-    lastSource = sourceNode;
-    lastSequence = sequence;
-
-
-    // -------------------------------------------------
-    // Decode status
-    // -------------------------------------------------
-
-    bool gasUnsafe =
-      status & GAS_UNSAFE_BIT;
-
-    bool tempUnsafe =
-      status & TEMP_UNSAFE_BIT;
-
-    bool fallDetected =
-      status & FALL_UNSAFE_BIT;
-
-    bool manualSOS =
-      status & MANUAL_SOS_BIT;
-
-
-    const char* message =
-      getMessageType(status);
-
-
-    // -------------------------------------------------
-    // RSSI
-    // -------------------------------------------------
-
-    int rssi =
-      device->getRSSI();
-
-
-    String address =
-      device->getAddress().toString().c_str();
-
-
-    // -------------------------------------------------
-    // SERIAL DISPLAY
-    // -------------------------------------------------
-
-    Serial.println();
-    Serial.println("================================");
-    Serial.println("       KAVACHAM GATEWAY");
-    Serial.println("================================");
-
-    Serial.print("SOURCE NODE: ");
-    Serial.println(sourceNode);
-
-    Serial.print("MESSAGE: ");
-    Serial.println(message);
-
-    Serial.print("SEQUENCE: ");
-    Serial.println(sequence);
-
-    Serial.print("GAS: ");
-    Serial.println(gas);
-
-    Serial.print("TEMPERATURE: ");
-    Serial.println(temperature);
-
-    Serial.print("GAS UNSAFE: ");
-    Serial.println(gasUnsafe ? "YES" : "NO");
-
-    Serial.print("TEMP UNSAFE: ");
-    Serial.println(tempUnsafe ? "YES" : "NO");
-
-    Serial.print("FALL: ");
-    Serial.println(fallDetected ? "YES" : "NO");
-
-    Serial.print("MANUAL SOS: ");
-    Serial.println(manualSOS ? "YES" : "NO");
-
-    Serial.print("NODE TYPE: ");
-    Serial.println(nodeType);
-
-    Serial.print("RSSI: ");
-    Serial.println(rssi);
-
-    Serial.print("BLE ADDRESS: ");
-    Serial.println(address);
-
-    Serial.println("================================");
-
-
-    // =================================================
-    // CREATE MQTT JSON
-    // =================================================
-
-    String json = "{";
-
-
-    // Node information
-
-    json += "\"node\":";
-    json += sourceNode;
-    json += ",";
-
-    json += "\"worker_id\":\"WSN-";
-    json += sourceNode;
-    json += "\",";
-
-
-    // Message
-
-    json += "\"message\":\"";
-    json += message;
-    json += "\",";
-
-
-    // Sequence
-
-    json += "\"sequence\":";
-    json += sequence;
-    json += ",";
-
-
-    // Sensor values
-
-    json += "\"gas\":";
-    json += gas;
-    json += ",";
-
-    json += "\"temperature\":";
-    json += temperature;
-    json += ",";
-
-
-    // Status
-
-    json += "\"gas_unsafe\":";
-    json += gasUnsafe ? "true" : "false";
-    json += ",";
-
-    json += "\"temperature_unsafe\":";
-    json += tempUnsafe ? "true" : "false";
-    json += ",";
-
-    json += "\"fall\":";
-    json += fallDetected ? "true" : "false";
-    json += ",";
-
-    json += "\"manual_sos\":";
-    json += manualSOS ? "true" : "false";
-    json += ",";
-
-
-    // Node type
-
-    json += "\"node_type\":";
-    json += nodeType;
-    json += ",";
-
-
-    // BLE information
-
-    json += "\"rssi\":";
-    json += rssi;
-    json += ",";
-
-    json += "\"ble_address\":\"";
-    json += address;
-    json += "\",";
-
-
-    // Gateway
-
-    json += "\"gateway\":\"KAVACHAM_GATEWAY\"";
-
-
-    json += "}";
-
-
-    // =================================================
-    // MQTT PUBLISH
-    // =================================================
-
-    if (mqttClient.connected())
-    {
-      if (
-        mqttClient.publish(
-          MQTT_TOPIC,
-          json.c_str()
-        )
-      )
-      {
-        Serial.println();
-        Serial.println(">>> MQTT PUBLISHED <<<");
-        Serial.println(json);
-      }
-      else
-      {
-        Serial.println(">>> MQTT PUBLISH FAILED <<<");
-      }
-    }
+    packetPending = true;
   }
 };
 
-
-ScanCallbacks callbacks;
-
+ScanCallbacks scanCallbacks;
 
 // =====================================================
-// SETUP
+// WIFI CONNECTION
 // =====================================================
 
-void setup()
-{
-  Serial.begin(115200);
+void connectWiFi() {
 
-  delay(1000);
+  if (WiFi.status() == WL_CONNECTED) {
+    return;
+  }
 
   Serial.println();
-  Serial.println("================================");
-  Serial.println("       KAVACHAM GATEWAY");
-  Serial.println("================================");
-  Serial.println(" NODE 1 -> NODE 2 -> GATEWAY");
-  Serial.println(" BLE -> MQTT");
-  Serial.println("================================");
+  Serial.println("Connecting to WiFi...");
 
+  WiFi.mode(WIFI_STA);
 
-  // ---------------------------------------------------
-  // WiFi
-  // ---------------------------------------------------
-
-  connectWiFi();
-
-
-  // ---------------------------------------------------
-  // MQTT
-  // ---------------------------------------------------
-
-  mqttClient.setServer(
-    MQTT_BROKER,
-    MQTT_PORT
+  WiFi.begin(
+    WIFI_SSID,
+    WIFI_PASSWORD
   );
 
-  mqttClient.setBufferSize(512);
+  unsigned long startTime = millis();
 
-  connectMQTT();
+  while (
+    WiFi.status() != WL_CONNECTED &&
+    millis() - startTime < 15000
+  ) {
 
+    delay(500);
 
-  // ---------------------------------------------------
-  // BLE
-  // ---------------------------------------------------
+    Serial.print(".");
+  }
+
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+
+    Serial.println("WiFi CONNECTED");
+
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+
+  } else {
+
+    Serial.print("WiFi FAILED. Status = ");
+    Serial.println(WiFi.status());
+  }
+}
+
+// =====================================================
+// MQTT CONNECTION
+// =====================================================
+
+void connectMQTT() {
+
+  if (WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  if (mqttClient.connected()) {
+    return;
+  }
+
+  if (
+    millis() - lastMQTTAttempt <
+    MQTT_RECONNECT_INTERVAL
+  ) {
+    return;
+  }
+
+  lastMQTTAttempt = millis();
+
+  Serial.println();
+  Serial.println("Connecting to MQTT...");
+
+  String clientID = "KAVACHAM_GATEWAY_";
+
+  clientID += String(
+    (uint32_t)(ESP.getEfuseMac() >> 32),
+    HEX
+  );
+
+  clientID += String(
+    (uint32_t)ESP.getEfuseMac(),
+    HEX
+  );
+
+  if (
+    mqttClient.connect(clientID.c_str())
+  ) {
+
+    Serial.println("MQTT CONNECTED");
+
+  } else {
+
+    Serial.print(
+      "MQTT CONNECTION FAILED. State = "
+    );
+
+    Serial.println(
+      mqttClient.state()
+    );
+  }
+}
+
+// =====================================================
+// BLE SCAN START
+// =====================================================
+
+void startBLEScan() {
+
+  if (bleScan == nullptr) {
+    return;
+  }
+
+  if (bleScan->isScanning()) {
+    return;
+  }
+
+  bleScan->clearResults();
+
+  bleScan->setActiveScan(true);
+
+  bleScan->start(
+    1000,
+    false
+  );
+
+  Serial.println("BLE SCAN STARTED");
+}
+
+// =====================================================
+// MESSAGE TYPE
+// =====================================================
+
+enum MessageType {
+
+  TELEMETRY = 0,
+
+  GAS_THRESHOLD_EXCEEDED,
+
+  TEMPERATURE_EXCEEDED,
+
+  CRITICAL_FALL,
+
+  MANUAL_SOS
+};
+
+int getMessageType(uint8_t status) {
+
+  if (status & MANUAL_SOS_BIT) {
+    return MANUAL_SOS;
+  }
+
+  if (status & FALL_UNSAFE_BIT) {
+    return CRITICAL_FALL;
+  }
+
+  if (status & GAS_UNSAFE_BIT) {
+    return GAS_THRESHOLD_EXCEEDED;
+  }
+
+  if (status & TEMP_UNSAFE_BIT) {
+    return TEMPERATURE_EXCEEDED;
+  }
+
+  return TELEMETRY;
+}
+
+// =====================================================
+// MESSAGE TYPE STRING
+// =====================================================
+
+const char* getMessageTypeString(
+  int type
+) {
+
+  switch (type) {
+
+    case MANUAL_SOS:
+      return "MANUAL_SOS";
+
+    case CRITICAL_FALL:
+      return "CRITICAL_FALL";
+
+    case GAS_THRESHOLD_EXCEEDED:
+      return "GAS_THRESHOLD_EXCEEDED";
+
+    case TEMPERATURE_EXCEEDED:
+      return "TEMPERATURE_EXCEEDED";
+
+    default:
+      return "TELEMETRY";
+  }
+}
+
+// =====================================================
+// PROCESS BLE PACKET
+// =====================================================
+
+void processBLEPacket() {
+
+  if (!packetPending) {
+    return;
+  }
+
+  // Local copy
+  uint8_t packet[PACKET_SIZE];
+
+  memcpy(
+    packet,
+    pendingPacket,
+    PACKET_SIZE
+  );
+
+  int rssi = pendingRSSI;
+
+  char address[40];
+
+  strncpy(
+    address,
+    pendingAddress,
+    sizeof(address) - 1
+  );
+
+  address[sizeof(address) - 1] = '\0';
+
+  packetPending = false;
+
+  // ===================================================
+  // DECODE PACKET
+  // ===================================================
+
+  uint8_t protocol =
+    packet[0];
+
+  uint8_t sourceNode =
+    packet[1];
+
+  uint8_t status =
+    packet[2];
+
+  uint8_t sequence =
+    packet[3];
+
+  uint8_t gas =
+    packet[4];
+
+  uint8_t temperature =
+    packet[5];
+
+  uint8_t nodeType =
+    packet[6];
+
+  // ===================================================
+  // UPDATE DUPLICATE TRACKING
+  // ===================================================
+
+  lastSource = sourceNode;
+
+  lastSequence = sequence;
+
+  haveLastPacket = true;
+
+  // ===================================================
+  // DECODE STATUS
+  // ===================================================
+
+  bool gasUnsafe =
+    status & GAS_UNSAFE_BIT;
+
+  bool temperatureUnsafe =
+    status & TEMP_UNSAFE_BIT;
+
+  bool fall =
+    status & FALL_UNSAFE_BIT;
+
+  bool manualSOS =
+    status & MANUAL_SOS_BIT;
+
+  int messageType =
+    getMessageType(status);
+
+  const char* message =
+    getMessageTypeString(messageType);
+
+  // ===================================================
+  // SERIAL OUTPUT
+  // ===================================================
+
+  Serial.println();
+
+  Serial.println(
+    "BLE PACKET RECEIVED"
+  );
+
+  Serial.println(
+    "========================================"
+  );
+
+  Serial.print(
+    "Protocol       : 0x"
+  );
+
+  Serial.println(
+    protocol,
+    HEX
+  );
+
+  Serial.print(
+    "Source Node    : "
+  );
+
+  Serial.println(
+    sourceNode
+  );
+
+  Serial.print(
+    "Sequence       : "
+  );
+
+  Serial.println(
+    sequence
+  );
+
+  Serial.print(
+    "Gas            : "
+  );
+
+  Serial.println(
+    gas
+  );
+
+  Serial.print(
+    "Temperature    : "
+  );
+
+  Serial.println(
+    temperature
+  );
+
+  Serial.print(
+    "Gas Unsafe     : "
+  );
+
+  Serial.println(
+    gasUnsafe ? "YES" : "NO"
+  );
+
+  Serial.print(
+    "Temp Unsafe    : "
+  );
+
+  Serial.println(
+    temperatureUnsafe ? "YES" : "NO"
+  );
+
+  Serial.print(
+    "Fall           : "
+  );
+
+  Serial.println(
+    fall ? "YES" : "NO"
+  );
+
+  Serial.print(
+    "Manual SOS     : "
+  );
+
+  Serial.println(
+    manualSOS ? "YES" : "NO"
+  );
+
+  Serial.print(
+    "Node Type      : "
+  );
+
+  Serial.println(
+    nodeType
+  );
+
+  Serial.print(
+    "RSSI           : "
+  );
+
+  Serial.println(
+    rssi
+  );
+
+  Serial.print(
+    "BLE Address    : "
+  );
+
+  Serial.println(
+    address
+  );
+
+  Serial.print(
+    "MESSAGE        : "
+  );
+
+  Serial.println(
+    message
+  );
+
+  Serial.println(
+    "========================================"
+  );
+
+  // ===================================================
+  // MQTT CHECK
+  // ===================================================
+
+  if (WiFi.status() != WL_CONNECTED) {
+
+    Serial.println(
+      "MQTT SKIPPED - WiFi disconnected"
+    );
+
+    return;
+  }
+
+  if (!mqttClient.connected()) {
+
+    connectMQTT();
+
+    if (!mqttClient.connected()) {
+
+      Serial.println(
+        "MQTT SKIPPED - MQTT not connected"
+      );
+
+      return;
+    }
+  }
+
+  // ===================================================
+  // JSON
+  // ===================================================
+
+  String json = "{";
+
+  json += "\"node\":";
+  json += String(sourceNode);
+
+  json += ",\"worker_id\":\"WSN-";
+  json += String(sourceNode);
+  json += "\"";
+
+  json += ",\"message\":\"";
+  json += message;
+  json += "\"";
+
+  json += ",\"sequence\":";
+  json += String(sequence);
+
+  json += ",\"gas\":";
+  json += String(gas);
+
+  json += ",\"temperature\":";
+  json += String(temperature);
+
+  json += ",\"gas_unsafe\":";
+  json += gasUnsafe ? "true" : "false";
+
+  json += ",\"temperature_unsafe\":";
+  json += temperatureUnsafe ? "true" : "false";
+
+  json += ",\"fall\":";
+  json += fall ? "true" : "false";
+
+  json += ",\"manual_sos\":";
+  json += manualSOS ? "true" : "false";
+
+  json += ",\"node_type\":";
+  json += String(nodeType);
+
+  json += ",\"rssi\":";
+  json += String(rssi);
+
+  json += ",\"ble_address\":\"";
+  json += address;
+  json += "\"";
+
+  json += ",\"gateway\":\"KAVACHAM_GATEWAY\"";
+
+  json += "}";
+
+  // ===================================================
+  // MQTT PUBLISH
+  // ===================================================
+
+  Serial.print(
+    "MQTT Payload Length = "
+  );
+
+  Serial.println(
+    json.length()
+  );
+
+  if (
+    mqttClient.publish(
+      MQTT_TOPIC,
+      json.c_str()
+    )
+  ) {
+
+    Serial.println(
+      ">>> MQTT PUBLISHED <<<"
+    );
+
+  } else {
+
+    Serial.println(
+      "!!! MQTT PUBLISH FAILED !!!"
+    );
+
+    Serial.print(
+      "MQTT State = "
+    );
+
+    Serial.println(
+      mqttClient.state()
+    );
+  }
+}
+
+// =====================================================
+// BLE SETUP
+// =====================================================
+
+void setupBLE() {
 
   NimBLEDevice::init(
-    "KAVACHAM_GATEWAY"
+    "KAVACHAM"
   );
 
   bleScan =
     NimBLEDevice::getScan();
 
   bleScan->setScanCallbacks(
-    &callbacks
+    &scanCallbacks
   );
 
-  bleScan->setActiveScan(true);
-
-  bleScan->setInterval(20);
-  bleScan->setWindow(20);
-
-
-  // Continuous BLE scan
-
-  bleScan->start(
-    0,
-    false
+  bleScan->setActiveScan(
+    true
   );
 
+  bleScan->setInterval(
+    45
+  );
 
-  Serial.println();
-  Serial.println("BLE SCANNER ACTIVE");
-  Serial.println("Waiting for Node 2...");
+  bleScan->setWindow(
+    30
+  );
+
+  startBLEScan();
 }
 
+// =====================================================
+// SETUP
+// =====================================================
+
+void setup() {
+
+  Serial.begin(115200);
+
+  delay(1000);
+
+  Serial.println();
+  Serial.println(
+    "========================================"
+  );
+
+  Serial.println(
+    "      KAVACHAM GATEWAY"
+  );
+
+  Serial.println(
+    "========================================"
+  );
+
+  // WiFi
+  connectWiFi();
+
+  // MQTT
+  mqttClient.setServer(
+    MQTT_BROKER,
+    MQTT_PORT
+  );
+
+  // MQTT buffer increased ONLY for larger JSON
+  mqttClient.setBufferSize(512);
+
+  connectMQTT();
+
+  // BLE
+  setupBLE();
+
+  Serial.println();
+  Serial.println(
+    "KAVACHAM GATEWAY READY"
+  );
+
+  Serial.println(
+    "========================================"
+  );
+}
 
 // =====================================================
 // LOOP
 // =====================================================
 
-void loop()
-{
-  // ---------------------------------------------------
-  // WiFi reconnect
-  // ---------------------------------------------------
+void loop() {
 
-  if (WiFi.status() != WL_CONNECTED)
-  {
+  // ===================================================
+  // WIFI
+  // ===================================================
+
+  if (
+    WiFi.status() != WL_CONNECTED
+  ) {
+
     connectWiFi();
   }
 
+  // ===================================================
+  // MQTT
+  // ===================================================
 
-  // ---------------------------------------------------
-  // MQTT reconnect
-  // ---------------------------------------------------
+  if (
+    WiFi.status() == WL_CONNECTED
+  ) {
 
-  if (!mqttClient.connected())
-  {
-    connectMQTT();
+    if (!mqttClient.connected()) {
+
+      connectMQTT();
+
+    } else {
+
+      mqttClient.loop();
+    }
   }
 
+  // ===================================================
+  // PROCESS BLE
+  // ===================================================
 
-  mqttClient.loop();
+  processBLEPacket();
 
+  // ===================================================
+  // RESTART BLE SCAN
+  // ===================================================
 
-  delay(10);
+  if (
+    !packetPending &&
+    !bleScan->isScanning()
+  ) {
+
+    startBLEScan();
+  }
+
+  delay(5);
 }
